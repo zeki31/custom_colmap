@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.9
+    hooks:
+    - id: ruff
+      types_or: [ python, pyi, jupyter ]
+      args: [ --fix ]
+      files: ^.*\.py$
+    - id: ruff-format
+      types_or: [ python, pyi, jupyter ]
+      files: ^.*\.py$
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: isort (python)
+        args: ["--profile", "black", "--filter-files"]
+        files: ^.*\.py$
+  - repo: https://github.com/psf/black
+    rev: 23.9.1
+    hooks:
+      - id: black
+        files: ^.*\.py$
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-yaml
+        args:
+          - "--unsafe"
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

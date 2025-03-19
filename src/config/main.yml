@@ -1,0 +1,18 @@
+base_dir: "../../sony_ai/camera/41/frame000000"
+output_dir: "results/41_frame000000"
+# base_dir: "../../datasets_FVV/FreeMan/subj01/20220929_1a7b141c06_subj01/frame000040"
+# output_dir: "results/freeman_subj01_frame000040"
+# base_dir: "../../datasets_FVV/N3DV/coffee_martini/frame000001"
+# output_dir: "results/coffee_martini_frame000001"
+
+keypoint_detector:
+  num_features: 4096
+  resize_to: 1024
+
+keypoint_matcher:
+  min_matches: 15
+  verbose: False
+
+colmap_mapper:
+  max_num_models: 2
+  min_model_size: 3

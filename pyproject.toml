@@ -1,0 +1,22 @@
+[project]
+name = "custom_colmap"
+version = "0.0.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.12.2"
+dependencies = [
+    "numpy",
+    "omegaconf",
+    "dacite",
+    "jaxtyping",
+    "pycolmap",
+    "h5py",
+    "tqdm",
+    "pre-commit",
+    # For LightGlue
+    "torch>=1.9.1",
+    "torchvision>=0.3",
+    "opencv-python",
+    "matplotlib",
+    "kornia>=0.6.11",
+]
