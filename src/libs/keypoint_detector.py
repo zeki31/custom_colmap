@@ -32,6 +32,9 @@ def detect_keypoints(
     Stores them in feature_dir/keypoints.h5 and feature_dir/descriptors.h5
     to be used later with LightGlue
     """
+    if (feature_dir / "descriptors.h5").exists():
+        return
+
     dtype = torch.float32  # ALIKED has issues with float16
 
     extractor = (

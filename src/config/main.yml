@@ -18,6 +18,7 @@ keypoint_detector:
 keypoint_matcher:
   min_matches: 15
   verbose: False
+  mask: True
 
 colmap_mapper:
   max_num_models: 2
