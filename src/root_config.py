@@ -21,6 +21,7 @@ class ColmapMapperCfg:
 class RootCfg:
     base_dir: Path
     output_dir: Path
+    ext: str
 
     keypoint_detector: KeypointDetectorCfg
     keypoint_matcher: KeypointMatcherCfg

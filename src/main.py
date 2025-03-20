@@ -47,7 +47,7 @@ def main():
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
 
     images_dir = cfg.base_dir / "images"
-    image_paths = list(images_dir.glob("*.png"))
+    image_paths = list(images_dir.glob(f"*.{cfg.ext}"))
     print(f"Got {len(image_paths)} images")
 
     feature_dir = cfg.output_dir / "feature_output"

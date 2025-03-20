@@ -1,9 +1,15 @@
-base_dir: "../../sony_ai/camera/41/frame000000"
-output_dir: "results/41_frame000000"
+base_dir: "../../KScenes/scenes/20240307_07"
+output_dir: "results/kscenes_20240307_07"
+ext: "jpg"
+# base_dir: "../../sony_ai/camera/41/frame000000"
+# output_dir: "results/41_frame000000"
+# ext: "png"
 # base_dir: "../../datasets_FVV/FreeMan/subj01/20220929_1a7b141c06_subj01/frame000040"
 # output_dir: "results/freeman_subj01_frame000040"
+# ext: "png"
 # base_dir: "../../datasets_FVV/N3DV/coffee_martini/frame000001"
 # output_dir: "results/coffee_martini_frame000001"
+# ext: "png"
 
 keypoint_detector:
   num_features: 4096
