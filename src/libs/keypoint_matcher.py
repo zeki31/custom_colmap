@@ -26,8 +26,8 @@ def keypoint_distances(
 
     Stores output at feature_dir/matches.h5
     """
-    # if (feature_dir / "matches.h5").exists():
-    #     return
+    if (feature_dir / "matches.h5").exists():
+        return
 
     if cfg.mask and (paths[0].parents[1] / "masks").exists():
         mask_dir = paths[0].parents[1] / "masks"
