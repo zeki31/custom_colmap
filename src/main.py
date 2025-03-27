@@ -1,6 +1,5 @@
 import argparse
 import gc
-import shutil
 import warnings
 from pathlib import Path
 
@@ -96,40 +95,56 @@ def main():
     # The process starts from a random pair of images and is incrementally extended by
     # registering new images and triangulating new points.
     output_path = cfg.output_dir / "sparse"
-    output_path.mkdir(parents=True, exist_ok=True)
-    mapper_options = pycolmap.IncrementalPipelineOptions(
-        max_num_models=cfg.colmap_mapper.max_num_models,
-        min_model_size=cfg.colmap_mapper.min_model_size,
-    )
-    maps = pycolmap.incremental_mapping(
-        database_path=database_path,
-        image_path=images_dir,
-        output_path=output_path,
-        options=mapper_options,
-    )
+    if output_path.exists():
+        options = pycolmap.IncrementalPipelineOptions(
+            triangulation=pycolmap.IncrementalTriangulatorOptions(
+                ignore_two_view_tracks=False, min_angle=0.1
+            )
+        )
+        reconstruction = pycolmap.Reconstruction(output_path)
+        pycolmap.triangulate_points(
+            reconstruction=reconstruction,
+            database_path=database_path,
+            image_path=images_dir,
+            output_path=output_path / "0",
+            options=options,
+        )
+        reconstruction.write_text(output_path / "0")
+    else:
+        output_path.mkdir(parents=True, exist_ok=True)
+        mapper_options = pycolmap.IncrementalPipelineOptions(
+            max_num_models=cfg.colmap_mapper.max_num_models,
+            min_model_size=cfg.colmap_mapper.min_model_size,
+        )
+        _ = pycolmap.incremental_mapping(
+            database_path=database_path,
+            image_path=images_dir,
+            output_path=output_path,
+            options=mapper_options,
+        )
 
-    # 5.2. Look for the best reconstruction: The incremental mapping offered by
-    # pycolmap attempts to reconstruct multiple models, we must pick the best one
-    images_registered = 0
-    best_idx = None
+        # 5.2. Look for the best reconstruction: The incremental mapping offered by
+        # pycolmap attempts to reconstruct multiple models, we must pick the best one
+        # images_registered = 0
+        # best_idx = None
 
-    print("Looking for the best reconstruction")
+        # print("Looking for the best reconstruction")
 
-    if isinstance(maps, dict):
-        for idx1, rec in maps.items():
-            print(idx1, rec.summary())
-            try:
-                if len(rec.images) > images_registered:
-                    images_registered = len(rec.images)
-                    best_idx = idx1
-            except Exception:
-                continue
+        # if isinstance(maps, dict):
+        #     for idx1, rec in maps.items():
+        #         print(idx1, rec.summary())
+        #         try:
+        #             if len(rec.images) > images_registered:
+        #                 images_registered = len(rec.images)
+        #                 best_idx = idx1
+        #         except Exception:
+        #             continue
 
     # 6. Remove features and all the other models
-    shutil.rmtree(feature_dir)
-    for idx1, rec in maps.items():
-        if idx1 != best_idx:
-            rec.remove()
+    # shutil.rmtree(feature_dir)
+    # for idx1, rec in maps.items():
+    #     if idx1 != best_idx:
+    #         rec.remove()
 
 
 if __name__ == "__main__":
