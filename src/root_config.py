@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Optional
 
 import yaml
 from dacite import Config, from_dict
@@ -21,6 +22,7 @@ class ColmapMapperCfg:
 class RootCfg:
     base_dir: Path
     output_dir: Path
+    prior_dir: Optional[Path]
     ext: str
 
     keypoint_detector: KeypointDetectorCfg
