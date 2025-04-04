@@ -1,6 +1,7 @@
 import os
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import h5py
 import numpy as np
@@ -39,7 +40,12 @@ def get_focal(image_path, err_on_default=False):
     return focal
 
 
-def create_camera(db, image_path, camera_model):
+def create_camera(
+    db: COLMAPDatabase,
+    image_path: Path,
+    camera_model: str,
+    prior_dir: Optional[Path],
+):
     image = Image.open(image_path)
     width, height = image.size
 
@@ -61,7 +67,13 @@ def create_camera(db, image_path, camera_model):
     return db.add_camera(model, width, height, param_arr)
 
 
-def add_keypoints(db, h5_path, image_path, camera_model):
+def add_keypoints(
+    db: COLMAPDatabase,
+    h5_path: Path,
+    image_path: Path,
+    camera_model: str,
+    prior_dir: Optional[Path],
+):
     keypoint_f = h5py.File(os.path.join(h5_path, "keypoints.h5"), "r")
 
     camera_id = None

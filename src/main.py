@@ -96,13 +96,14 @@ def main():
     # The process starts from a random pair of images and is incrementally extended by
     # registering new images and triangulating new points.
     if cfg.prior_dir is not None:
+        (cfg.output_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
         options = pycolmap.IncrementalPipelineOptions(
             ba_global_function_tolerance=0.000001,
             triangulation=pycolmap.IncrementalTriangulatorOptions(
                 ignore_two_view_tracks=False, min_angle=0.1
             ),
         )
-        reconstruction = pycolmap.Reconstruction(cfg.output_dir)
+        reconstruction = pycolmap.Reconstruction(cfg.prior_dir)
         pycolmap.triangulate_points(
             reconstruction=reconstruction,
             database_path=database_path,
@@ -110,6 +111,7 @@ def main():
             output_path=cfg.output_dir / "sparse" / "0",
             options=options,
         )
+        (cfg.output_dir / "sparse" / "txt").mkdir(parents=True, exist_ok=True)
         reconstruction.write_text(cfg.output_dir / "sparse" / "txt")
     else:
         cfg.output_dir.mkdir(parents=True, exist_ok=True)
@@ -141,13 +143,13 @@ def main():
                 except Exception:
                     continue
 
-    # 6. Remove features and all the other models
-    shutil.rmtree(feature_dir)
-    if isinstance(maps, dict):
-        for idx, rec in maps.items():
-            if idx == best_idx:
-                continue
-            shutil.rmtree(cfg.output_dir / "sparse" / str(idx))
+        if isinstance(maps, dict):
+            for idx, rec in maps.items():
+                if idx == best_idx:
+                    continue
+                shutil.rmtree(cfg.output_dir / "sparse" / str(idx))
+
+    # shutil.rmtree(feature_dir)
 
 
 if __name__ == "__main__":
