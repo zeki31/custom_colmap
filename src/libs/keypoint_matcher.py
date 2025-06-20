@@ -43,7 +43,8 @@ def keypoint_distances(
         feature_dir / "descriptors.h5", mode="r"
     ) as f_descriptors, h5py.File(feature_dir / "matches.h5", mode="w") as f_matches:
         for idx1, idx2 in tqdm(index_pairs, desc="Computing keypoing distances"):
-            key1, key2 = paths[idx1].name, paths[idx2].name
+            key1 = paths[idx1].parts[-3] + "-images-" + paths[idx1].name
+            key2 = paths[idx2].parts[-3] + "-images-" + paths[idx2].name
 
             keypoints1 = torch.from_numpy(f_keypoints[key1][...]).to(device)
             keypoints2 = torch.from_numpy(f_keypoints[key2][...]).to(device)

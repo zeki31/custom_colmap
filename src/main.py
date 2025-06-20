@@ -8,8 +8,6 @@ import pycolmap
 import torch
 from jaxtyping import install_import_hook
 
-from libs.pair_generator import get_pairs_exhaustive
-
 # Configure beartype and jaxtyping.
 with install_import_hook(
     ("src",),
@@ -18,51 +16,38 @@ with install_import_hook(
     from libs.h5_to_db import import_into_colmap
     from libs.keypoint_detector import detect_keypoints
     from libs.keypoint_matcher import keypoint_distances
+    from libs.retriever import Retriever
     from root_config import load_typed_root_config
 
 warnings.simplefilter("ignore")
 
 
-def get_arguments() -> argparse.Namespace:
-    """parse all the arguments from command line inteface return a list of
-    parsed arguments."""
-
-    parser = argparse.ArgumentParser(
-        description="""
-        Run structure-from-motion using COLMAP.
-        """
-    )
-    parser.add_argument(
-        "--config_path",
-        type=Path,
-    )
-    parser.add_argument("-o", "--overrides", nargs="*")
-    return parser.parse_args()
-
-
 def main():
-    args = get_arguments()
-    cfg = load_typed_root_config(args.config_path, args.overrides)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--cfg_path", type=Path)
+    parser.add_argument("-o", "--overrides", nargs="*")
+    args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cfg = load_typed_root_config(args.cfg_path, args.overrides)
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     cfg.to_yaml(cfg.output_dir / "config.yaml")
 
-    images_dir = cfg.base_dir / "images"
-    image_paths = list(images_dir.glob(f"*.{cfg.ext}"))
-    print(f"Got {len(image_paths)} images")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    retriever = Retriever(cfg.retriever)
+    image_paths = retriever.get_image_paths(cfg.base_dir)
+
+    # 1. Get the pairs of images
+    index_pairs = retriever.get_pairs_exhaustive(
+        image_paths,
+    )
+    gc.collect()
 
     feature_dir = cfg.output_dir / "feature_output"
     feature_dir.mkdir(parents=True, exist_ok=True)
     database_path = feature_dir / "colmap.db"
     if database_path.exists():
         database_path.unlink()
-
-    # 1. Get the pairs of images
-    index_pairs = get_pairs_exhaustive(
-        image_paths,
-    )
-    gc.collect()
 
     # 2. Detect keypoints of all images
     detect_keypoints(
@@ -85,7 +70,7 @@ def main():
 
     # 4.1. Import keypoint distances of matches into colmap for RANSAC
     import_into_colmap(
-        images_dir,
+        cfg.base_dir,
         feature_dir,
         database_path,
     )
@@ -109,7 +94,7 @@ def main():
         pycolmap.triangulate_points(
             reconstruction=reconstruction,
             database_path=database_path,
-            image_path=images_dir,
+            image_path=cfg.base_dir,
             output_path=cfg.output_dir / "sparse" / "0",
             options=options,
         )
@@ -123,7 +108,7 @@ def main():
         )
         maps = pycolmap.incremental_mapping(
             database_path=database_path,
-            image_path=images_dir,
+            image_path=cfg.base_dir,
             output_path=cfg.output_dir / "sparse",
             options=mapper_options,
         )

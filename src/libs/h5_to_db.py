@@ -1,7 +1,6 @@
 import os
 import warnings
 from pathlib import Path
-from typing import Optional
 
 import h5py
 import numpy as np
@@ -44,7 +43,6 @@ def create_camera(
     db: COLMAPDatabase,
     image_path: Path,
     camera_model: str,
-    prior_dir: Optional[Path],
 ):
     image = Image.open(image_path)
     width, height = image.size
@@ -72,15 +70,15 @@ def add_keypoints(
     h5_path: Path,
     image_path: Path,
     camera_model: str,
-    prior_dir: Optional[Path],
 ):
     keypoint_f = h5py.File(os.path.join(h5_path, "keypoints.h5"), "r")
 
     camera_id = None
     fname_to_id = {}
-    for filename in tqdm(list(keypoint_f.keys())):
-        keypoints = keypoint_f[filename][()]
+    for key in tqdm(list(keypoint_f.keys())):
+        keypoints = keypoint_f[key][()]
 
+        filename = key.replace("-", "/")
         path = os.path.join(image_path, filename)
         if not os.path.isfile(path):
             raise IOError(f"Invalid image path {path}")
@@ -88,7 +86,7 @@ def add_keypoints(
         if camera_id is None:
             camera_id = create_camera(db, path, camera_model)
         image_id = db.add_image(filename, camera_id)
-        fname_to_id[filename] = image_id
+        fname_to_id[key] = image_id
 
         db.add_keypoints(image_id, keypoints)
 

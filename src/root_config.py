@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 
 from libs.keypoint_detector import KeypointDetectorCfg
 from libs.keypoint_matcher import KeypointMatcherCfg
+from libs.retriever import RetrieverCfg
 
 
 @dataclass
@@ -22,9 +23,9 @@ class ColmapMapperCfg:
 class RootCfg:
     base_dir: Path
     output_dir: Path
-    prior_dir: Optional[Path]
-    ext: str
 
+    prior_dir: Optional[Path]
+    retriever: RetrieverCfg
     keypoint_detector: KeypointDetectorCfg
     keypoint_matcher: KeypointMatcherCfg
     colmap_mapper: ColmapMapperCfg
