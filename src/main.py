@@ -36,15 +36,17 @@ def get_arguments() -> argparse.Namespace:
         "--config_path",
         type=Path,
     )
+    parser.add_argument("-o", "--overrides", nargs="*")
     return parser.parse_args()
 
 
 def main():
     args = get_arguments()
-    cfg = load_typed_root_config(args.config_path)
+    cfg = load_typed_root_config(args.config_path, args.overrides)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    cfg.to_yaml(cfg.output_dir / "config.yaml")
 
     images_dir = cfg.base_dir / "images"
     image_paths = list(images_dir.glob(f"*.{cfg.ext}"))

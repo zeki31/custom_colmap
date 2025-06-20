@@ -30,9 +30,30 @@ class RootCfg:
     colmap_mapper: ColmapMapperCfg
 
     def to_yaml(self, path: str):
-        config_dict = asdict(self)
+        """Save the configuration to a YAML file."""
         with open(path, "w") as file:
-            yaml.dump(config_dict, file, default_flow_style=False, sort_keys=False)
+            yaml.dump(
+                self.to_dict(),
+                file,
+                default_flow_style=False,
+                sort_keys=False,
+                allow_unicode=True,
+            )
+
+    def to_dict(self) -> dict:
+        """Convert the configuration to a dictionary, converting Paths to strings."""
+
+        def convert(obj):
+            if isinstance(obj, dict):
+                return {k: convert(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert(i) for i in obj]
+            elif isinstance(obj, Path):
+                return str(obj)
+            else:
+                return obj
+
+        return convert(asdict(self))
 
 
 TYPE_HOOKS = {
@@ -40,8 +61,11 @@ TYPE_HOOKS = {
 }
 
 
-def load_typed_root_config(cfg_path: str) -> RootCfg:
+def load_typed_root_config(cfg_path: Path, overrides: Optional[list[str]]) -> RootCfg:
     cfg = OmegaConf.load(cfg_path)
+    if overrides:
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
+
     return from_dict(
         RootCfg,
         OmegaConf.to_container(cfg),
