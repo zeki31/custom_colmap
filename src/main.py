@@ -1,6 +1,8 @@
 import argparse
 import gc
 import shutil
+import subprocess
+import time
 import warnings
 from pathlib import Path
 
@@ -102,39 +104,62 @@ def main():
         reconstruction.write_text(cfg.output_dir / "sparse" / "txt")
     else:
         cfg.output_dir.mkdir(parents=True, exist_ok=True)
-        mapper_options = pycolmap.IncrementalPipelineOptions(
-            max_num_models=cfg.colmap_mapper.max_num_models,
-            min_model_size=cfg.colmap_mapper.min_model_size,
-        )
-        maps = pycolmap.incremental_mapping(
-            database_path=database_path,
-            image_path=cfg.base_dir,
-            output_path=cfg.output_dir / "sparse",
-            options=mapper_options,
-        )
+        if cfg.mapper.name == "colmap":
+            mapper_options = pycolmap.IncrementalPipelineOptions(
+                max_num_models=cfg.mapper.max_num_models,
+                min_model_size=cfg.mapper.min_model_size,
+            )
+            start = time.time()
+            maps = pycolmap.incremental_mapping(
+                database_path=database_path,
+                image_path=cfg.base_dir,
+                output_path=cfg.output_dir / "sparse",
+                options=mapper_options,
+            )
+            end = time.time()
 
-        # 5.2. Look for the best reconstruction: The incremental mapping offered by
-        # pycolmap attempts to reconstruct multiple models, we must pick the best one
-        images_registered = 0
-        best_idx = None
+            # 5.2. Look for the best reconstruction: The incremental mapping offered by
+            # pycolmap attempts to reconstruct multiple models, we must pick the best one
+            images_registered = 0
+            best_idx = None
+            print("Looking for the best reconstruction")
+            if isinstance(maps, dict):
+                for idx1, rec in maps.items():
+                    print(idx1, rec.summary())
+                    try:
+                        if len(rec.images) > images_registered:
+                            images_registered = len(rec.images)
+                            best_idx = idx1
+                    except Exception:
+                        continue
+            if isinstance(maps, dict):
+                for idx, rec in maps.items():
+                    if idx == best_idx:
+                        continue
+                    shutil.rmtree(cfg.output_dir / "sparse" / str(idx))
 
-        print("Looking for the best reconstruction")
+        elif cfg.mapper.name == "glomap":
+            cmd = [
+                "glomap",
+                "mapper",
+                "--database_path",
+                str(database_path),
+                "--image_path",
+                str(cfg.base_dir),
+                "--output_path",
+                str((cfg.output_dir / "sparse")),
+                "--GlobalPositioning.use_gpu",
+                "2",
+                "--BundleAdjustment.use_gpu",
+            ]
+            start = time.time()
+            subprocess.run(cmd, check=True)
+            end = time.time()
 
-        if isinstance(maps, dict):
-            for idx1, rec in maps.items():
-                print(idx1, rec.summary())
-                try:
-                    if len(rec.images) > images_registered:
-                        images_registered = len(rec.images)
-                        best_idx = idx1
-                except Exception:
-                    continue
-
-        if isinstance(maps, dict):
-            for idx, rec in maps.items():
-                if idx == best_idx:
-                    continue
-                shutil.rmtree(cfg.output_dir / "sparse" / str(idx))
+        # Write out the time taken for mapping
+        with open(cfg.output_dir / "mapping_time.txt", "w") as f:
+            f.write(f"Mapping took {end - start:.2f} seconds\n")
+            f.write(f"Mapping took {(end - start) / 60:.2f} minutes\n")
 
     # shutil.rmtree(feature_dir)
 

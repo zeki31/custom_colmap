@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import yaml
 from dacite import Config, from_dict
@@ -12,7 +12,8 @@ from libs.retriever import RetrieverCfg
 
 
 @dataclass
-class ColmapMapperCfg:
+class MapperCfg:
+    name: Literal["colmap", "glomap"] = "colmap"
     max_num_models: int = 2
     # By default colmap does not generate a reconstruction
     # if less than 10 images are registered. Lower it to 3.
@@ -28,7 +29,7 @@ class RootCfg:
     retriever: RetrieverCfg
     keypoint_detector: KeypointDetectorCfg
     keypoint_matcher: KeypointMatcherCfg
-    colmap_mapper: ColmapMapperCfg
+    mapper: MapperCfg
 
     def to_yaml(self, path: str):
         """Save the configuration to a YAML file."""

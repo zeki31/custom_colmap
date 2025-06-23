@@ -44,9 +44,12 @@ class Retriever:
                 ]
             else:
                 image_paths = [
-                    sorted((base_dir / cam_dir).glob(f"*.{self.cfg.ext}"))
-                    for cam_dir in cam_dirs
-                ][self.cfg.start :]
+                    img_path
+                    for folder in cam_dirs
+                    for img_path in sorted(
+                        (base_dir / folder).glob(f"*.{self.cfg.ext}")
+                    )[self.cfg.start :]
+                ]
 
         if self.cfg.stride > 1:
             image_paths = image_paths[:: self.cfg.stride]
