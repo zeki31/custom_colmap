@@ -1,12 +1,14 @@
 base_dir: "../sony_ai/20250529/valid/lane/running"
-output_dir: "results/lane_running/start=150_fps=12_imgs=240"
+output_dir: "results/lane_running/start=0_fps=60_imgs=2000_traj"
 
 retriever:
   img_dir_type: "stream" # images / frame / stream
   ext: "jpg"
-  start: 150
-  duration: 450
-  stride: 5 # 12 fps, total 280 images
+  start: 0
+  duration: -1 # -1 means all
+  stride: 1 # 12 fps, total 280 images
+
+  pair_generator: trajectory
 
 keypoint_detector:
   num_features: 4096
@@ -15,7 +17,7 @@ keypoint_detector:
 keypoint_matcher:
   min_matches: 15
   verbose: false
-  mask: true
+  mask: false
 
 mapper:
   name: colmap

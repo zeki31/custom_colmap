@@ -12,6 +12,8 @@ class RetrieverCfg:
     stride: int
     duration: int
 
+    pair_generator: Literal["exhaustive", "trajectory"]
+
 
 class Retriever:
     def __init__(self, cfg: RetrieverCfg):
@@ -58,9 +60,32 @@ class Retriever:
 
         return image_paths
 
-    def get_pairs_exhaustive(
+    def get_pairs(
         self,
         paths: list[Path],
     ) -> list[tuple[int, int]]:
-        """Obtains all possible index pairs of a list"""
-        return list(itertools.combinations(range(len(paths)), 2))
+        if self.cfg.pair_generator == "exhaustive":
+            # Obtains all possible index pairs of a list
+            pairs = list(itertools.combinations(range(len(paths)), 2))
+        elif self.cfg.pair_generator == "trajectory":
+            # Obtains only adjacent pairs
+            # (different timestamp, same camera)
+            pairs = []
+            for i in range(len(paths) - 1):
+                pairs.append((i, i + 1))
+            # Collect the every self.cfg.duration-th pair
+            # (same timestamp, different cameras)
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend(
+                    list(
+                        itertools.combinations(
+                            range(t, len(paths), n_frames // self.cfg.stride), 2
+                        )
+                    )
+                )
+            pairs = sorted(set(pairs))  # Remove duplicates
+
+        print(f"Got {len(pairs)} pairs")
+
+        return pairs
