@@ -61,7 +61,7 @@ def keypoint_distances(
 
             # If mask is enabled, remove the matches that are in the mask
             if cfg.mask:
-                mask_img1 = cv2.imread(mask_dir / key1, cv2.IMREAD_GRAYSCALE)
+                mask_img1 = cv2.imread(mask_dir / paths[idx1].name, cv2.IMREAD_GRAYSCALE)
                 mask_img1 = torch.from_numpy(mask_img1).to(device)
 
                 # Get the pixel positions of the matches
