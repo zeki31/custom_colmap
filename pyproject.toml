@@ -21,4 +21,5 @@ dependencies = [
     "kornia>=0.6.11",
     "flow-vis>=0.1",
     "tensorboard>=2.19.0",
+    "scipy>=1.16.0",
 ]
