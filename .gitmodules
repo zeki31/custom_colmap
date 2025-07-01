@@ -1,6 +1,3 @@
 [submodule "src/libs/submodules/LightGlue"]
 	path = src/libs/submodules/LightGlue
 	url = https://github.com/cvg/LightGlue
-[submodule "src/libs/submodules/co-tracker"]
-	path = src/libs/submodules/co-tracker
-	url = https://github.com/facebookresearch/co-tracker
