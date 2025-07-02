@@ -6,9 +6,9 @@
 
 import torch
 
-from cotracker.models.core.cotracker.cotracker import CoTracker2
-from cotracker.models.core.cotracker.cotracker3_offline import CoTrackerThreeOffline
-from cotracker.models.core.cotracker.cotracker3_online import CoTrackerThreeOnline
+from .core.cotracker.cotracker import CoTracker2
+from .core.cotracker.cotracker3_offline import CoTrackerThreeOffline
+from .core.cotracker.cotracker3_online import CoTrackerThreeOnline
 
 
 def build_cotracker(

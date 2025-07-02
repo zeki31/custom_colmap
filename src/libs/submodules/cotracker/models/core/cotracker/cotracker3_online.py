@@ -7,11 +7,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from cotracker.models.core.model_utils import sample_features5d, bilinear_sampler
-from cotracker.models.core.embeddings import get_1d_sincos_pos_embed_from_grid
 
-from cotracker.models.core.cotracker.blocks import Mlp, BasicEncoder
-from cotracker.models.core.cotracker.cotracker import EfficientUpdateFormer
+from ..embeddings import get_1d_sincos_pos_embed_from_grid
+from ..model_utils import bilinear_sampler, sample_features5d
+from .blocks import BasicEncoder, Mlp
+from .cotracker import EfficientUpdateFormer
 
 torch.manual_seed(0)
 
@@ -111,7 +111,6 @@ class CoTrackerThreeBase(nn.Module):
             return coords_lvl
 
     def get_track_feat(self, fmaps, queried_frames, queried_coords, support_radius=0):
-
         sample_frames = queried_frames[:, None, :, None]
         sample_coords = torch.cat(
             [

@@ -4,16 +4,16 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import collections
+from functools import partial
+from itertools import repeat
+from typing import Callable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from functools import partial
-from typing import Callable
-import collections
-from torch import Tensor
-from itertools import repeat
 
-from cotracker.models.core.model_utils import bilinear_sampler
+from ..model_utils import bilinear_sampler
 
 
 # From PyTorch internals
@@ -405,7 +405,7 @@ class AttnBlock(nn.Module):
         num_heads,
         attn_class: Callable[..., nn.Module] = Attention,
         mlp_ratio=4.0,
-        **block_kwargs
+        **block_kwargs,
     ):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
