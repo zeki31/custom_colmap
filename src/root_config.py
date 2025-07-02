@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from libs.keypoint_detector import KeypointDetectorCfg
 from libs.keypoint_matcher import KeypointMatcherCfg
 from libs.retriever import RetrieverCfg
+from libs.tracking import TrackingCfg
 
 
 @dataclass
@@ -29,6 +30,7 @@ class RootCfg:
     retriever: RetrieverCfg
     keypoint_detector: KeypointDetectorCfg
     keypoint_matcher: KeypointMatcherCfg
+    tracking: TrackingCfg
     mapper: MapperCfg
 
     def to_yaml(self, path: str):

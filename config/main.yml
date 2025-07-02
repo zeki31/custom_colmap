@@ -1,12 +1,12 @@
 base_dir: "../sony_ai/20250529/valid/lane/running"
-output_dir: "results/lane_running/start=0_fps=60_imgs=2000_traj"
+output_dir: "results/lane_running/start=0_fps=60_imgs=all_tracking"
 
 retriever:
   img_dir_type: "stream" # images / frame / stream
   ext: "jpg"
   start: 0
-  duration: -1 # -1 means all
-  stride: 1 # 12 fps, total 280 images
+  duration: -1
+  stride: 1
 
   pair_generator: trajectory
 
@@ -23,3 +23,9 @@ mapper:
   name: colmap
   max_num_models: 2
   min_model_size: 3
+
+tracking:
+  ckpt_path: "src/libs/submodules/cotracker/checkpoints/scaled_offline.pth"
+  window_len: 30
+  grid_size: 60
+  sample_ratio: 6

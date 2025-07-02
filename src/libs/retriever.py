@@ -86,6 +86,23 @@ class Retriever:
                 )
             pairs = sorted(set(pairs))  # Remove duplicates
 
-        print(f"Got {len(pairs)} pairs")
+        elif self.cfg.pair_generator == "multi-dyn":
+            # Obtains only adjacent pairs
+            # (different timestamp, same camera)
+            pairs = []
+            for i in range(len(paths) - 1):
+                pairs.append((i, i + 1))
+            # Collect the every self.cfg.duration-th pair
+            # (same timestamp, different cameras)
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend(
+                    list(
+                        itertools.combinations(
+                            range(t, len(paths), n_frames // self.cfg.stride), 2
+                        )
+                    )
+                )
+            pairs = sorted(set(pairs))  # Remove duplicates
 
         return pairs

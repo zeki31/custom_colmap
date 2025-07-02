@@ -8,6 +8,7 @@ from PIL import ExifTags, Image
 from tqdm import tqdm
 
 from .database import COLMAPDatabase, image_ids_to_pair_id
+from .traj2matches import traj_to_matches
 
 
 def get_focal(image_path, err_on_default=False):
@@ -121,17 +122,51 @@ def add_matches(db, h5_path, fname_to_id):
 
 
 def import_into_colmap(
-    path: Path,
-    feature_dir: Path,
+    path: Path = None,
+    feature_dir: Path = None,
     database_path: str = "colmap.db",
+    image_paths: list[Path] = None,
 ) -> None:
     """Adds keypoints into colmap"""
     db = COLMAPDatabase.connect(database_path)
     db.create_tables()
-    fname_to_id = add_keypoints(db, feature_dir, path, "simple-pinhole")
-    add_matches(
-        db,
-        feature_dir,
-        fname_to_id,
-    )
+
+    # 1. Add a camera (or cameras)
+    camera_id = create_camera(db, image_paths[0], "simple-pinhole")
+    # focal, width, height = 1.2 * 480, 480, 270
+    # db.add_camera(0, 480, 270, np.array([focal, width / 2, height / 2]))
+    # 2. Add images
+    for pth in image_paths:
+        img_path = pth.parts[-3] + "/images/" + pth.name
+        db.add_image(name=img_path, camera_id=camera_id)
+
+    image_ids = {}
+    for name, image_id in db.execute("SELECT name, image_id FROM images;"):
+        image_ids[name] = image_id
+
+    colmap_feat_match_data = traj_to_matches(image_paths, feature_dir)
+
+    print("Importing keypoints into the database...")
+    for image_name, image_id in image_ids.items():
+        keypoints = np.array(colmap_feat_match_data[image_name].keypoints)
+        keypoints += 0.5  # COLMAP origin
+        if keypoints.shape[0] == 0:
+            print(f"Warning: No keypoints for image {image_name}, skipping.")
+            continue
+        db.add_keypoints(image_id, keypoints)
+
+    print("Importing matches into the database...")
+    matched = set()
+    for image_name, image_id in image_ids.items():
+        matches = colmap_feat_match_data[image_name].match_pairs
+        for pair, match in matches.items():
+            # get the image name and then id
+            name0, name1 = pair.split("-")
+            id0, id1 = image_ids[name0], image_ids[name1]
+            if len({(id0, id1), (id1, id0)} & matched) > 0:
+                continue
+            match = np.array(match)
+            db.add_matches(id0, id1, match)
+            matched |= {(id0, id1), (id1, id0)}
+
     db.commit()
