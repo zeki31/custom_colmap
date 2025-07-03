@@ -1,11 +1,5 @@
 import torch
 import torch.nn.functional as F
-
-import sys
-
-import matplotlib.pyplot as plt
-import mediapy as media
-import numpy as np
 from tapnet.torch.tapir_model import TAPIR
 
 

@@ -5,16 +5,14 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import torch
-import cv2
 
+import cv2
 import imageio
 import numpy as np
-
+import torch
 from cotracker.datasets.utils import CoTrackerData
-from torchvision.transforms import ColorJitter, GaussianBlur
 from PIL import Image
-from cotracker.models.core.model_utils import smart_cat
+from torchvision.transforms import ColorJitter, GaussianBlur
 
 
 class CoTrackerDataset(torch.utils.data.Dataset):

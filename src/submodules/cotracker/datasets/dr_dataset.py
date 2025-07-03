@@ -5,17 +5,17 @@
 # LICENSE file in the root directory of this source tree.
 
 
-import os
 import gzip
-import torch
-import numpy as np
-import torch.utils.data as data
+import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Optional, Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from cotracker.datasets.utils import CoTrackerData
+import numpy as np
+import torch
+import torch.utils.data as data
 from cotracker.datasets.dataclass_utils import load_dataclass
+from cotracker.datasets.utils import CoTrackerData
 
 
 @dataclass

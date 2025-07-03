@@ -4,22 +4,16 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
-import torch.nn.functional as F
 from typing import Tuple
 
+import torch
+import torch.nn.functional as F
 from cotracker.models.core.cotracker.cotracker3_offline import CoTrackerThreeOffline
 from cotracker.models.core.model_utils import (
     get_points_on_a_grid,
-    get_uniformly_sampled_pts,
     get_sift_sampled_pts,
+    get_uniformly_sampled_pts,
 )
-import numpy as np
-import sys
-
-from torchvision.transforms import Compose
-from tqdm import tqdm
-from cotracker.models.core.model_utils import bilinear_sampler
 
 
 class EvaluationPredictor(torch.nn.Module):
@@ -77,7 +71,7 @@ class EvaluationPredictor(torch.nn.Module):
                 t = query[0, 0, 0].long()
                 start_ind = 0
                 traj_e_pind, vis_e_pind, conf_e_pind = self._process_one_point(
-                    video[:,start_ind:], query
+                    video[:, start_ind:], query
                 )
                 traj_e[:, start_ind:, pind : pind + 1] = traj_e_pind[:, :, :1]
                 vis_e[:, start_ind:, pind : pind + 1] = vis_e_pind[:, :, :1]
@@ -120,18 +114,22 @@ class EvaluationPredictor(torch.nn.Module):
                 traj_e = traj_e[
                     :,
                     :,
-                    : -self.grid_size**2 - sift_size - self.num_uniformly_sampled_pts,
+                    : -(self.grid_size**2)
+                    - sift_size
+                    - self.num_uniformly_sampled_pts,
                 ]
                 vis_e = vis_e[
                     :,
                     :,
-                    : -self.grid_size**2 - sift_size - self.num_uniformly_sampled_pts,
+                    : -(self.grid_size**2)
+                    - sift_size
+                    - self.num_uniformly_sampled_pts,
                 ]
                 if conf_e is not None:
                     conf_e = conf_e[
                         :,
                         :,
-                        : -self.grid_size**2
+                        : -(self.grid_size**2)
                         - sift_size
                         - self.num_uniformly_sampled_pts,
                     ]

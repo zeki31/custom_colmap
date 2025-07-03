@@ -5,15 +5,15 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import sys
-import torch
-import signal
 import socket
-from torch.utils.data import ConcatDataset
-from cotracker.datasets.utils import collate_fn, collate_fn_train
-from torch.utils.tensorboard import SummaryWriter
+import sys
+
+import torch
 from cotracker.datasets.dr_dataset import DynamicReplicaDataset
+from cotracker.datasets.utils import collate_fn, collate_fn_train
 from cotracker.models.evaluation_predictor import EvaluationPredictor
+from torch.utils.data import ConcatDataset
+from torch.utils.tensorboard import SummaryWriter
 
 
 # define the handler function

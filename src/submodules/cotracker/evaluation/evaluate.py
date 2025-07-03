@@ -6,20 +6,16 @@
 
 import json
 import os
+from dataclasses import dataclass, field
+
 import hydra
 import numpy as np
 import torch
-
-from typing import Optional
-from dataclasses import dataclass, field
-
-from omegaconf import OmegaConf
-
 from cotracker.datasets.utils import collate_fn
-from cotracker.models.evaluation_predictor import EvaluationPredictor
-
 from cotracker.evaluation.core.evaluator import Evaluator
 from cotracker.models.build_cotracker import build_cotracker
+from cotracker.models.evaluation_predictor import EvaluationPredictor
+from omegaconf import OmegaConf
 
 
 @dataclass(eq=False)
@@ -136,7 +132,7 @@ def run_eval(cfg: DefaultConfig):
         test_dataset = TapVidDataset(
             dataset_type=dataset_type,
             data_root=data_root,
-            queried_first=not "strided" in cfg.dataset_name,
+            queried_first="strided" not in cfg.dataset_name,
             # resize_to=None,
         )
     elif cfg.dataset_name == "dynamic_replica":
@@ -168,7 +164,7 @@ def run_eval(cfg: DefaultConfig):
     # Saving the evaluation results to a .json file
     evaluate_result = evaluate_result["avg"]
     print("evaluate_result", evaluate_result)
-    result_file = os.path.join(cfg.exp_dir, f"result_eval_.json")
+    result_file = os.path.join(cfg.exp_dir, "result_eval_.json")
     evaluate_result["time"] = end - start
     print(f"Dumping eval results to {result_file}.")
     with open(result_file, "w") as f:

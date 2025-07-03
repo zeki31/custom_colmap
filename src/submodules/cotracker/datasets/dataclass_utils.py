@@ -5,11 +5,12 @@
 # LICENSE file in the root directory of this source tree.
 
 
-import json
 import dataclasses
+import json
+from dataclasses import MISSING, Field
+from typing import IO, Any, Tuple, Type, TypeVar, Union, get_args, get_origin
+
 import numpy as np
-from dataclasses import Field, MISSING
-from typing import IO, TypeVar, Type, get_args, get_origin, Union, Any, Tuple
 
 _X = TypeVar("_X")
 

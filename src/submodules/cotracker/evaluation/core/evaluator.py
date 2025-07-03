@@ -4,22 +4,21 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from collections import defaultdict
-import os
-from typing import Optional
-import torch
-from tqdm import tqdm
-import numpy as np
-
-from torch.utils.tensorboard import SummaryWriter
-from cotracker.datasets.utils import dataclass_to_cuda_
-from cotracker.utils.visualizer import Visualizer
-from cotracker.models.core.model_utils import reduce_masked_mean
-from cotracker.evaluation.core.eval_utils import compute_tapvid_metrics
-from cotracker.predictor import CoTrackerOnlinePredictor
-from cotracker.models.core.cotracker.cotracker3_offline import CoTrackerThreeOffline
-from cotracker.models.core.cotracker.cotracker3_online import CoTrackerThreeOnline
 import logging
+import os
+from collections import defaultdict
+from typing import Optional
+
+import numpy as np
+import torch
+from cotracker.datasets.utils import dataclass_to_cuda_
+from cotracker.evaluation.core.eval_utils import compute_tapvid_metrics
+from cotracker.models.core.cotracker.cotracker3_online import CoTrackerThreeOnline
+from cotracker.models.core.model_utils import reduce_masked_mean
+from cotracker.predictor import CoTrackerOnlinePredictor
+from cotracker.utils.visualizer import Visualizer
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 
 class Evaluator:

@@ -4,11 +4,12 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import numpy as np
 import random
+from typing import Optional, Tuple
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import Optional, Tuple
 
 EPS = 1e-6
 
@@ -62,6 +63,7 @@ def get_sift_sampled_pts(
     sampling_length_percent: float = 0.25,
 ):
     import cv2
+
     # assert size == 384, "hardcoded for experiment"
     sift = cv2.SIFT_create(nfeatures=size // num_sampled_frames)
     points = list()

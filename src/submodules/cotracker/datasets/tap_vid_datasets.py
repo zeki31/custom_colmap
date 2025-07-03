@@ -4,18 +4,18 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
-import io
 import glob
-import torch
+import io
+import os
 import pickle
-import numpy as np
-import mediapy as media
 import random
-from PIL import Image
 from typing import Mapping, Tuple, Union
 
+import mediapy as media
+import numpy as np
+import torch
 from cotracker.datasets.utils import CoTrackerData
+from PIL import Image
 
 DatasetElement = Mapping[str, Mapping[str, Union[np.ndarray, str]]]
 

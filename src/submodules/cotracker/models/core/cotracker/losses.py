@@ -4,11 +4,11 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+from typing import List
+
 import torch
 import torch.nn.functional as F
 from cotracker.models.core.model_utils import reduce_masked_mean
-import torch.nn as nn
-from typing import List
 
 
 def sequence_loss(

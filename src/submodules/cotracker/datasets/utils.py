@@ -5,11 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 
-import torch
 import dataclasses
-import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
+
+import torch
 
 
 @dataclass(eq=False)

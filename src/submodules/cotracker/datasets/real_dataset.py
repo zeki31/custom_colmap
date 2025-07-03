@@ -4,22 +4,11 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
-import torch
-import json
 import cv2
-import math
-import imageio
 import numpy as np
-
+import torch
 from cotracker.datasets.utils import CoTrackerData
-from torchvision.transforms import ColorJitter, GaussianBlur
-from PIL import Image
-from cotracker.models.core.model_utils import smart_cat
 from torchvision.io import read_video
-import torchvision
-from cotracker.datasets.utils import collate_fn, collate_fn_train, dataclass_to_cuda_
-import torchvision.transforms.functional as F
 
 
 class RealDataset(torch.utils.data.Dataset):
@@ -37,7 +26,9 @@ class RealDataset(torch.utils.data.Dataset):
         super(RealDataset, self).__init__()
         np.random.seed(0)
         torch.manual_seed(0)
-        raise ValueError(f"This dataset wasn't released. You should collect your own dataset of real videos before training with this dataset class.")
+        raise ValueError(
+            "This dataset wasn't released. You should collect your own dataset of real videos before training with this dataset class."
+        )
 
         stopwords = set(
             [
@@ -133,9 +124,9 @@ class RealDataset(torch.utils.data.Dataset):
         filelist_all = []
 
         for part in data_splits:
-            filelist = np.load('YOUR FILELIST')
-            captions = np.load('YOUR CAPTIONS')
-            keywords = np.load('YOUR KEYWORDS')
+            filelist = np.load("YOUR FILELIST")
+            captions = np.load("YOUR CAPTIONS")
+            keywords = np.load("YOUR KEYWORDS")
 
             filtered_seqs_motion = [
                 i
