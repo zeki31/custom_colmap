@@ -15,10 +15,10 @@ with install_import_hook(
     ("src",),
     ("beartype", "beartype"),
 ):
-    from libs.h5_to_db import import_into_colmap
-    from libs.retriever import Retriever
-    from libs.tracking import track
-    from root_config import load_typed_root_config
+    from src.colmap.h5_to_db import import_into_colmap
+    from src.matching.retriever import Retriever
+    from src.matching.tracking import track
+    from src.root_config import load_typed_root_config
 
 warnings.simplefilter("ignore")
 
@@ -131,7 +131,7 @@ def main():
                 f.write(f"Mapping took {end - start:.2f} seconds\n")
                 f.write(f"Mapping took {(end - start) / 60:.2f} minutes\n")
 
-            logger.log({"mapping_time": end - start})
+            logger.log({"mapping_time": (end - start) // 60})
 
         # shutil.rmtree(feature_dir)
 

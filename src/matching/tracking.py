@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from .submodules.cotracker.predictor import CoTrackerPredictor
-from .trajectory import IncrementalTrajectorySet, TrajectorySet
+from src.matching.tracking import IncrementalTrajectorySet, TrajectorySet
+from src.submodules.cotracker.predictor import CoTrackerPredictor
 
 
 @dataclass

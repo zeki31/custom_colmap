@@ -6,10 +6,10 @@ import yaml
 from dacite import Config, from_dict
 from omegaconf import OmegaConf
 
-from libs.keypoint_detector import KeypointDetectorCfg
-from libs.keypoint_matcher import KeypointMatcherCfg
-from libs.retriever import RetrieverCfg
-from libs.tracking import TrackingCfg
+from src.matching.keypoint_detector import KeypointDetectorCfg
+from src.matching.keypoint_matcher import KeypointMatcherCfg
+from src.matching.retriever import RetrieverCfg
+from src.matching.tracking import TrackingCfg
 
 
 @dataclass
@@ -22,7 +22,7 @@ class MapperCfg:
 
 
 @dataclass
-class WandBCfg:
+class WandbCfg:
     entity: str
     project: str
     name: str
@@ -34,7 +34,7 @@ class WandBCfg:
 class RootCfg:
     base_dir: Path
     out_dir: Path
-    wandb: WandBCfg
+    wandb: WandbCfg
 
     prior_dir: Optional[Path]
     retriever: RetrieverCfg

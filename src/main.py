@@ -14,10 +14,10 @@ with install_import_hook(
     ("src",),
     ("beartype", "beartype"),
 ):
-    from libs.h5_to_db import import_into_colmap
-    from libs.keypoint_detector import detect_keypoints
-    from libs.keypoint_matcher import keypoint_distances
-    from libs.retriever import Retriever
+    from colmap.h5_to_db import import_into_colmap
+    from matching.keypoint_detector import detect_keypoints
+    from matching.keypoint_matcher import keypoint_distances
+    from matching.retriever import Retriever
     from root_config import load_typed_root_config
 
 warnings.simplefilter("ignore")

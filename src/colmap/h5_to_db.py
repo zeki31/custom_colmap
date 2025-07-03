@@ -7,8 +7,8 @@ import numpy as np
 from PIL import ExifTags, Image
 from tqdm import tqdm
 
-from .database import COLMAPDatabase, image_ids_to_pair_id
-from .traj2matches import traj_to_matches
+from src.colmap.database import COLMAPDatabase, image_ids_to_pair_id
+from src.matching.traj2matches import traj_to_matches
 
 
 def get_focal(image_path, err_on_default=False):

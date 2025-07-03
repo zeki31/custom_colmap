@@ -1,4 +1,3 @@
-
 [submodule "src/submodules/LightGlue"]
 	path = src/submodules/LightGlue
 	url = https://github.com/cvg/LightGlue

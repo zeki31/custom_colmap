@@ -6,7 +6,7 @@ import kornia as K
 import torch
 from tqdm import tqdm
 
-from .submodules.LightGlue.lightglue import ALIKED
+from src.submodules.LightGlue.lightglue import ALIKED
 
 
 @dataclass
