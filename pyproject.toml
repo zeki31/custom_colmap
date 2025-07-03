@@ -22,4 +22,5 @@ dependencies = [
     "flow-vis>=0.1",
     "tensorboard>=2.19.0",
     "scipy>=1.16.0",
+    "wandb>=0.21.0",
 ]

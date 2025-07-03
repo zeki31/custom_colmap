@@ -22,9 +22,19 @@ class MapperCfg:
 
 
 @dataclass
+class WandBCfg:
+    entity: str
+    project: str
+    name: str
+    tags: list[str]
+    mode: Literal["online", "offline", "disabled"]
+
+
+@dataclass
 class RootCfg:
     base_dir: Path
-    output_dir: Path
+    out_dir: Path
+    wandb: WandBCfg
 
     prior_dir: Optional[Path]
     retriever: RetrieverCfg

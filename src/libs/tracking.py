@@ -16,14 +16,15 @@ class TrackingCfg:
     window_len: int = 60
     grid_size: int = 60
     sample_ratio: int = 6
-    traj_min_len: int = 3
+    traj_min_len: int = 2
+    overlap: int = 2
 
 
 def track(
-    cfg: TrackingCfg, image_paths: list[Path], output_dir: Path, device: torch.device
+    cfg: TrackingCfg, image_paths: list[Path], feature_dir: Path, device: torch.device
 ):
     """Sequentially track point trajectories"""
-    if (output_dir / "track.npy").exists():
+    if (feature_dir / "track.npy").exists():
         return
 
     cotracker3 = CoTrackerPredictor(
@@ -35,57 +36,83 @@ def track(
     cotracker3 = cotracker3.to(device)
 
     h, w = 270, 480
+    stride = cfg.window_len - cfg.overlap
     trajs = IncrementalTrajectorySet(len(image_paths) + 1, h, w, cfg.sample_ratio)
-    for i in tqdm(range(len(image_paths) // cfg.window_len), desc="Tracking"):
-        start_t = i * cfg.window_len
-        end_t = start_t + cfg.window_len
 
-        frames = []
-        for image_path in image_paths[start_t:end_t]:
-            im = cv2.imread(str(image_path))
-            im_resized = cv2.resize(im, (480, 270))
-            frames.append(np.array(im_resized))
-        video = np.stack(frames)
-        video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
+    start_t = 0
+    with tqdm(total=len(image_paths) // stride + 1) as pbar:
+        while start_t < len(image_paths):
+            end_t = start_t + cfg.window_len
 
-        grid_pts = (
-            torch.from_numpy(trajs.sample_candidates)
-            .reshape(1, -1, 2)
-            .float()
-            .to(device)
-        )
-        queries = torch.cat(
-            [torch.ones_like(grid_pts[:, :, :1]) * 0, grid_pts],
-            dim=2,
-        ).repeat(1, 1, 1)
-        pred_tracks, pred_visibility = cotracker3(
-            video,
-            queries=queries,
-            grid_query_frame=0,
-            backward_tracking=True,
-        )
+            frames = []
+            for image_path in image_paths[start_t:end_t]:
+                im = cv2.imread(str(image_path))
+                frames.append(np.array(im))
+            video = np.stack(frames)
+            video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
 
-        pred_tracks = pred_tracks[0].cpu().numpy()
-        pred_visibility = pred_visibility[0].cpu().numpy()
-
-        viz_mask = pred_visibility[0] > 0
-        for timestep in range(cfg.window_len - 1):
-            frame_id = start_t + timestep
-
-            # Generate new trajectories if needed
-            if timestep == 0:
-                points = trajs.sample_candidates
-                times = (np.ones(points.shape[0]) * frame_id).astype(int)
-                trajs.new_traj_all(times, points)
-
-            viz_mask = viz_mask & (pred_visibility[timestep] > 0)
-
-            # Propagate all the trajectories
-            trajs.extend_all(
-                pred_tracks[timestep + 1][viz_mask],
-                frame_id + 1,
-                pred_visibility[timestep + 1][viz_mask],
+            grid_pts = (
+                torch.from_numpy(trajs.sample_candidates)
+                .reshape(1, -1, 2)
+                .float()
+                .to(device)
             )
+            queries = torch.cat(
+                [torch.ones_like(grid_pts[:, :, :1]) * 0, grid_pts],
+                dim=2,
+            ).repeat(1, 1, 1)
+            pred_tracks, pred_visibility = cotracker3(
+                video,
+                queries=queries,
+                grid_query_frame=0,
+                backward_tracking=True,
+            )
+
+            # # save a video with predicted tracks
+            # from .submodules.cotracker.utils.visualizer import Visualizer
+            # vis = Visualizer(save_dir="results/tracking", pad_value=120, linewidth=1, fps=60)
+            # vis.visualize(
+            #     video,
+            #     pred_tracks,
+            #     pred_visibility,
+            #     query_frame=0,
+            #     filename=f"track_{start_t:04d}_{end_t:04d}",
+            # )
+
+            pred_tracks = pred_tracks[0].cpu().numpy()
+            pred_visibility = pred_visibility[0].cpu().numpy()
+
+            viz_mask = pred_visibility[0] > 0
+            for timestep in range(len(pred_tracks) - 1):
+                frame_id = start_t + timestep
+
+                # Generate new trajectories if needed
+                if start_t == 0 and timestep == 0:
+                    points = pred_tracks[timestep]
+                    times = (np.ones(points.shape[0]) * frame_id).astype(int)
+                    trajs.new_traj_all(times, points)
+
+                viz_mask = viz_mask & (pred_visibility[timestep] > 0)
+
+                # Propagate all the trajectories
+                if timestep == len(pred_tracks) - 2:
+                    # Last timestep, we extend the active trajectories
+                    trajs.extend_all(
+                        pred_tracks[timestep + 1][viz_mask],
+                        frame_id + 1,
+                        pred_visibility[timestep + 1][viz_mask],
+                        add_non_active=True,
+                    )
+                else:
+                    trajs.extend_all(
+                        pred_tracks[timestep + 1][viz_mask],
+                        frame_id + 1,
+                        pred_visibility[timestep + 1][viz_mask],
+                    )
+
+            start_t += stride
+
+            pbar.update(1)
 
         trajs.clear_active()
 
@@ -96,4 +123,4 @@ def track(
             continue
         dict_trajs[idx] = traj
     trajectories = TrajectorySet(dict_trajs)
-    np.save(output_dir / "track.npy", trajectories)
+    np.save(feature_dir / "track.npy", trajectories)

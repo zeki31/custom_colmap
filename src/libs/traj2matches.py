@@ -16,6 +16,7 @@
 
 from pathlib import Path
 
+import cv2
 import numpy as np
 from tqdm import tqdm
 
@@ -47,21 +48,20 @@ class imageMatchData:
             self_id, tgt_img_id = int(self_id), int(tgt_img_id)
             assert self_id == self.image_id
 
-            self_name = (
-                image_names[self_id].parts[-3] + "/images/" + image_names[self_id].name
-            )
-            tgt_name = (
-                image_names[tgt_img_id].parts[-3]
-                + "/images/"
-                + image_names[tgt_img_id].name
-            )
+            self_name = "/".join(image_names[self_id].parts[-3:])
+            tgt_name = "/".join(image_names[tgt_img_id].parts[-3:])
             new_key = self_name + "-" + tgt_name
             self.match_pairs[new_key] = self.match_pairs.pop(key)
 
 
-def traj_to_matches(image_names: list[Path], feature_dir: Path):
-    # some hyper-parameters
-    sample_k = 20
+def traj_to_matches(image_paths: list[Path], feature_dir: Path):
+    if (feature_dir / "colmap_datas.npy").exists():
+        colmap_datas = np.load(
+            feature_dir / "colmap_datas.npy", allow_pickle=True
+        ).item()
+        if not isinstance(colmap_datas, dict):
+            colmap_datas = colmap_datas.as_dict()
+        return colmap_datas
 
     trajectories = np.load(feature_dir / "track.npy", allow_pickle=True).item()
     if not isinstance(trajectories, dict):
@@ -69,50 +69,49 @@ def traj_to_matches(image_names: list[Path], feature_dir: Path):
 
     # initialize each image
     image_datas = []
-    for i in range(len(image_names)):
+    for i in range(len(image_paths)):
         image_datas.append(imageMatchData(image_id=i))
+
+    mask_imgs = [
+        cv2.resize(
+            cv2.imread(pth.parents[1] / "masks" / pth.name, cv2.IMREAD_GRAYSCALE),
+            (480, 270),
+        )
+        for pth in image_paths
+    ]
 
     for traj in tqdm(trajectories.values(), desc="Processing trajectories"):
         locations, frame_ids = np.array(traj["locations"]), np.array(traj["frame_ids"])
         assert locations.shape[0] == frame_ids.shape[0]
 
-        # loop through the trajectory to get all the keypoint ids in each image
+        # Obtain all the keypoint ids in each image
         img_ids, kp_inds = [], []
         for location, img_id in zip(locations, frame_ids):
             mx, my = location
+
+            if mask_imgs[img_id][int(my), int(mx)]:
+                continue
+
             mx, my, img_id = float(mx), float(my), int(img_id)
             image_datas[img_id].insert_keypoint([mx, my])
             ind = len(image_datas[img_id].keypoints) - 1
             kp_inds.append(ind)
             img_ids.append(img_id)
 
-        # loop through the trajectory images to sample matches (N*K)
         for j in range(len(img_ids)):
-            if len(img_ids) <= sample_k:
-                # then insert every other image as matching pairs
-                for k in range(len(img_ids)):
-                    if k == j:
-                        continue
-                    image_datas[img_ids[j]].insert_match(
-                        img_ids[k], kp_inds[j], kp_inds[k]
-                    )
-            else:
-                # then uniformly sample K images among this traj
-                stride = len(img_ids) // sample_k
-                for k in range(sample_k):
-                    tgt_img_traj_ind = k * stride
-                    if tgt_img_traj_ind == j:
-                        continue
-                    image_datas[img_ids[j]].insert_match(
-                        img_ids[tgt_img_traj_ind], kp_inds[j], kp_inds[tgt_img_traj_ind]
-                    )
+            for k in range(len(img_ids)):
+                if k == j:
+                    continue
+                image_datas[img_ids[j]].insert_match(img_ids[k], kp_inds[j], kp_inds[k])
 
     # Read the images and project the trajectory-based image-id to image name
     # The colmap does not necessarily follow the sorted image name as ids
     colmap_datas = {}
-    for i, img_name in enumerate(image_names):
-        image_datas[i].rename_matches(image_names)
-        img_name = img_name.parts[-3] + "/images/" + img_name.name
+    for i, img_name in enumerate(image_paths):
+        image_datas[i].rename_matches(image_paths)
+        img_name = "/".join(img_name.parts[-3:])
         colmap_datas[img_name] = image_datas[i]
+
+    np.save(feature_dir / "colmap_datas.npy", colmap_datas)
 
     return colmap_datas

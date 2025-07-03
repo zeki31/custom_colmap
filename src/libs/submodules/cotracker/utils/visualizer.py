@@ -5,14 +5,14 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import numpy as np
-import imageio
-import torch
 
-from matplotlib import cm
+import imageio
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
+from matplotlib import cm
 from PIL import Image, ImageDraw
 
 
@@ -158,7 +158,7 @@ class Visualizer:
 
             video_writer.close()
 
-            print(f"Video saved to {save_path}")
+            # print(f"Video saved to {save_path}")
 
     def draw_tracks_on_video(
         self,

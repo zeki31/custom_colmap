@@ -130,14 +130,19 @@ def import_into_colmap(
     """Adds keypoints into colmap"""
     db = COLMAPDatabase.connect(database_path)
     db.create_tables()
+    # fname_to_id = add_keypoints(db, feature_dir, path, "simple-pinhole")
+    # add_matches(
+    #     db,
+    #     feature_dir,
+    #     fname_to_id,
+    # )
+    # db.commit()
 
     # 1. Add a camera (or cameras)
     camera_id = create_camera(db, image_paths[0], "simple-pinhole")
-    # focal, width, height = 1.2 * 480, 480, 270
-    # db.add_camera(0, 480, 270, np.array([focal, width / 2, height / 2]))
     # 2. Add images
     for pth in image_paths:
-        img_path = pth.parts[-3] + "/images/" + pth.name
+        img_path = "/".join(pth.parts[-3:])
         db.add_image(name=img_path, camera_id=camera_id)
 
     image_ids = {}
@@ -153,6 +158,7 @@ def import_into_colmap(
         if keypoints.shape[0] == 0:
             print(f"Warning: No keypoints for image {image_name}, skipping.")
             continue
+
         db.add_keypoints(image_id, keypoints)
 
     print("Importing matches into the database...")
