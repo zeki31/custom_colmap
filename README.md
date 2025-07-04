@@ -10,6 +10,7 @@ uv venv
 Install dependencies
 ```
 uv sync
+uv pip install imageio[ffmpeg]
 ```
 Export `PYTHONPATH` to `.env` and `.venv/bin/activate`
 ```
@@ -18,6 +19,5 @@ Export `PYTHONPATH` to `.env` and `.venv/bin/activate`
 
 ## Running
 ```
-cd src
-python main.py --config_path config/main.yml
+python src/main.py --config_path config/main.yml
 ```

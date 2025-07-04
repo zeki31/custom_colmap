@@ -7,7 +7,7 @@ import numpy as np
 from PIL import ExifTags, Image
 from tqdm import tqdm
 
-from .database import COLMAPDatabase, image_ids_to_pair_id
+from src.colmap.database import COLMAPDatabase, image_ids_to_pair_id
 
 
 def get_focal(image_path, err_on_default=False):
@@ -43,7 +43,7 @@ def create_camera(
     db: COLMAPDatabase,
     image_path: Path,
     camera_model: str,
-):
+) -> int:
     image = Image.open(image_path)
     width, height = image.size
 
@@ -79,8 +79,8 @@ def add_keypoints(
         keypoints = keypoint_f[key][()]
 
         filename = key.replace("-", "/")
-        path = os.path.join(image_path, filename)
-        if not os.path.isfile(path):
+        path = image_path / filename
+        if not path.is_file():
             raise IOError(f"Invalid image path {path}")
 
         if camera_id is None:
@@ -118,20 +118,3 @@ def add_matches(db, h5_path, fname_to_id):
                 added.add(pair_id)
 
                 pbar.update(1)
-
-
-def import_into_colmap(
-    path: Path,
-    feature_dir: Path,
-    database_path: str = "colmap.db",
-) -> None:
-    """Adds keypoints into colmap"""
-    db = COLMAPDatabase.connect(database_path)
-    db.create_tables()
-    fname_to_id = add_keypoints(db, feature_dir, path, "simple-pinhole")
-    add_matches(
-        db,
-        feature_dir,
-        fname_to_id,
-    )
-    db.commit()

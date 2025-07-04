@@ -6,9 +6,8 @@ import yaml
 from dacite import Config, from_dict
 from omegaconf import OmegaConf
 
-from libs.keypoint_detector import KeypointDetectorCfg
-from libs.keypoint_matcher import KeypointMatcherCfg
-from libs.retriever import RetrieverCfg
+from src.matching import MatcherCfg
+from src.matching.retriever import RetrieverCfg
 
 
 @dataclass
@@ -21,17 +20,26 @@ class MapperCfg:
 
 
 @dataclass
+class WandbCfg:
+    entity: str
+    project: str
+    name: str
+    mode: Literal["online", "offline", "disabled"]
+
+
+@dataclass
 class RootCfg:
     base_dir: Path
-    output_dir: Path
+    out_dir: Path
+    wandb: WandbCfg
 
     prior_dir: Optional[Path]
+
     retriever: RetrieverCfg
-    keypoint_detector: KeypointDetectorCfg
-    keypoint_matcher: KeypointMatcherCfg
+    matcher: MatcherCfg
     mapper: MapperCfg
 
-    def to_yaml(self, path: str):
+    def to_yaml(self, path: Path):
         """Save the configuration to a YAML file."""
         with open(path, "w") as file:
             yaml.dump(
@@ -65,6 +73,16 @@ TYPE_HOOKS = {
 
 def load_typed_root_config(cfg_path: Path, overrides: Optional[list[str]]) -> RootCfg:
     cfg = OmegaConf.load(cfg_path)
+
+    # Handle multiple config choices
+    defaults = cfg.pop("defaults", [])
+    cfg_dir = cfg_path.parent
+    for item in defaults:
+        for key, val in item.items():
+            subcfg_path = cfg_dir / key / f"{val}.yml"
+            subcfg = OmegaConf.load(subcfg_path)
+            cfg[key] = subcfg
+
     if overrides:
         cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
 
