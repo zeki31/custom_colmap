@@ -7,11 +7,16 @@ Initialize venv
 ```
 uv venv
 ```
+
 Install dependencies
 ```
 uv sync
 uv pip install imageio[ffmpeg]
+
+bash script/download_ckpts.sh
+bash script/install_glomap.sh
 ```
+
 Export `PYTHONPATH` to `.env` and `.venv/bin/activate`
 ```
 ./setup_env.sh
