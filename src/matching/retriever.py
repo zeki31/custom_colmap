@@ -1,4 +1,3 @@
-import itertools
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
@@ -17,8 +16,6 @@ class RetrieverCfg:
     duration: int
 
     comp_ratio: Optional[int]
-
-    pair_generator: Literal["exhaustive", "trajectory"]
 
 
 class Retriever:
@@ -96,50 +93,3 @@ class Retriever:
             image_paths_resized.append(img_path_resized)
 
         return image_paths_resized
-
-    def get_pairs(
-        self,
-        paths: list[Path],
-    ) -> list[tuple[int, int]]:
-        if self.cfg.pair_generator == "exhaustive":
-            # Obtains all possible index pairs of a list
-            pairs = list(itertools.combinations(range(len(paths)), 2))
-        elif self.cfg.pair_generator == "trajectory":
-            # Obtains only adjacent pairs
-            # (different timestamp, same camera)
-            pairs = []
-            for i in range(len(paths) - 1):
-                pairs.append((i, i + 1))
-            # Collect the every self.cfg.duration-th pair
-            # (same timestamp, different cameras)
-            n_frames = len(paths) // 4
-            for t in range(n_frames):
-                pairs.extend(
-                    list(
-                        itertools.combinations(
-                            range(t, len(paths), n_frames // self.cfg.stride), 2
-                        )
-                    )
-                )
-            pairs = sorted(set(pairs))  # Remove duplicates
-
-        elif self.cfg.pair_generator == "multi-dyn":
-            # Obtains only adjacent pairs
-            # (different timestamp, same camera)
-            pairs = []
-            for i in range(len(paths) - 1):
-                pairs.append((i, i + 1))
-            # Collect the every self.cfg.duration-th pair
-            # (same timestamp, different cameras)
-            n_frames = len(paths) // 4
-            for t in range(n_frames):
-                pairs.extend(
-                    list(
-                        itertools.combinations(
-                            range(t, len(paths), n_frames // self.cfg.stride), 2
-                        )
-                    )
-                )
-            pairs = sorted(set(pairs))  # Remove duplicates
-
-        return pairs
