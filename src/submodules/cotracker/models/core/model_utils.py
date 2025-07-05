@@ -84,7 +84,7 @@ def get_sift_sampled_pts(
 
 def get_points_on_a_grid(
     size: int,
-    extent: Tuple[float, ...],
+    extent: Tuple[int, ...],
     center: Optional[Tuple[float, ...]] = None,
     device: Optional[torch.device] = torch.device("cpu"),
 ):
