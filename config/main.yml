@@ -8,18 +8,18 @@ base_dir: ../sony_ai/20250529/valid/lane/running
 out_dir: results
 wandb:
   entity: zeki31-global-page
-  project: intro_cotracker
-  name: lane_running_test
+  project: intro_multiprocess
+  name: test_lane_running
   mode: offline
 
 retriever:
   img_dir_type: stream # images / frame / stream
   ext: jpg
   start: 0
-  duration: 10
+  duration: 40
   stride: 1
 
-  comp_ratio: 4
+  comp_ratio: 1
 
 mapper:
   name: colmap

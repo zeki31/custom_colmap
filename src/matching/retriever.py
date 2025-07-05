@@ -35,10 +35,10 @@ class Retriever:
 
         elif self.cfg.img_dir_type == "stream":
             cam_dirs = [
-                "1_fixed/images",
+                # "1_fixed/images",
                 "2_dynA/images",
                 "3_dynB/images",
-                "4_dynC/images",
+                # "4_dynC/images",
             ]
             if self.cfg.duration > 0:
                 image_paths = [

@@ -1,7 +1,7 @@
 name: tracking
 
 tracker:
-  ckpt_path: src/libs/submodules/cotracker/checkpoints/scaled_offline.pth
+  ckpt_path: src/submodules/cotracker/checkpoints/scaled_offline.pth
   window_len: 15
   grid_size: 60
   sample_ratio: 6
@@ -12,8 +12,7 @@ keypoint_detector:
   resize_to: 1024
 
 keypoint_matcher:
-  pair_generator: trajectory
+  pair_generator: view
   min_matches: 15
   verbose: false
   mask: true
-  stride: 1

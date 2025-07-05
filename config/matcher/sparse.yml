@@ -5,8 +5,7 @@ keypoint_detector:
   resize_to: 1024
 
 keypoint_matcher:
-  pair_generator: trajectory
+  pair_generator: exhaustive
   min_matches: 15
   verbose: false
   mask: true
-  stride: 1

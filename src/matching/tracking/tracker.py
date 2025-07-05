@@ -32,20 +32,19 @@ class Tracker:
         self.logger = logger
         self.device = device
 
+        self.point_tracker = CoTrackerPredictor(
+            checkpoint=self.cfg.ckpt_path,
+            v2=False,
+            offline=True,
+            window_len=60,
+        ).to(self.device)
+
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Sequentially track point trajectories"""
         if (feature_dir / "track.npy").exists():
             return
 
-        cotracker3 = CoTrackerPredictor(
-            checkpoint=self.cfg.ckpt_path,
-            v2=False,
-            offline=True,
-            window_len=60,
-        )
-        cotracker3 = cotracker3.to(self.device)
-
-        h, w = 270, 480
+        h, w = cv2.imread(image_paths[0]).shape[:2]
         stride = self.cfg.window_len - self.cfg.overlap
         trajs = IncrementalTrajectorySet(
             len(image_paths) + 1, h, w, self.cfg.sample_ratio
@@ -78,7 +77,7 @@ class Tracker:
                     [torch.ones_like(grid_pts[:, :, :1]) * 0, grid_pts],
                     dim=2,
                 ).repeat(1, 1, 1)
-                pred_tracks, pred_visibility = cotracker3(
+                pred_tracks, pred_visibility = self.point_tracker(
                     video,
                     queries=queries,
                     grid_query_frame=0,

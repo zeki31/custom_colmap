@@ -13,11 +13,10 @@ from tqdm import tqdm
 
 @dataclass
 class KeypointMatcherCfg:
-    pair_generator: Literal["exhaustive", "trajectory"] = "exhaustive"
+    pair_generator: Literal["exhaustive", "frame-view", "view"] = "exhaustive"
     min_matches: int = 15
     verbose: bool = True
     mask: bool = False
-    stride: int = 1
 
 
 class KeypointMatcher:
@@ -38,7 +37,7 @@ class KeypointMatcher:
         if self.cfg.pair_generator == "exhaustive":
             # Obtains all possible index pairs of a list
             pairs = list(itertools.combinations(range(len(paths)), 2))
-        elif self.cfg.pair_generator == "trajectory":
+        elif self.cfg.pair_generator == "frame-view":
             # Obtains only adjacent pairs
             # (different timestamp, same camera)
             pairs = []
@@ -49,11 +48,17 @@ class KeypointMatcher:
             n_frames = len(paths) // 4
             for t in range(n_frames):
                 pairs.extend(
-                    list(
-                        itertools.combinations(
-                            range(t, len(paths), n_frames // self.cfg.stride), 2
-                        )
-                    )
+                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
+                )
+            pairs = sorted(set(pairs))  # Remove duplicates
+        elif self.cfg.pair_generator == "view":
+            # Obtains only adjacent cameras
+            # (same timestamp, different cameras)
+            pairs = []
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend(
+                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
                 )
             pairs = sorted(set(pairs))  # Remove duplicates
 
@@ -91,8 +96,8 @@ class KeypointMatcher:
             feature_dir / "matches.h5", mode="w"
         ) as f_matches:
             for idx1, idx2 in tqdm(index_pairs, desc="Computing keypoing distances"):
-                key1 = paths[idx1].parts[-3] + "-images-" + paths[idx1].name
-                key2 = paths[idx2].parts[-3] + "-images-" + paths[idx2].name
+                key1 = "-".join(paths[idx1].parts[-3:])
+                key2 = "-".join(paths[idx2].parts[-3:])
 
                 keypoints1 = torch.from_numpy(f_keypoints[key1][...]).to(self.device)
                 keypoints2 = torch.from_numpy(f_keypoints[key2][...]).to(self.device)

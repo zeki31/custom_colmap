@@ -1,10 +1,12 @@
+import warnings
 from pathlib import Path
 from typing import Literal
 
+import h5py
 import numpy as np
 import wandb
 
-from src.colmap.database import COLMAPDatabase
+from src.colmap.database import COLMAPDatabase, image_ids_to_pair_id
 from src.colmap.h5_to_db import add_keypoints, add_matches, create_camera
 from src.colmap.traj2matches import traj_to_matches
 
@@ -37,41 +39,75 @@ class COLMAPImporter:
             )
 
         elif matching_type == "tracking":
-            # 1. Add a camera (or cameras)
-            camera_id = create_camera(db, image_paths[0], "simple-pinhole")
-            # 2. Add images
-            for pth in image_paths:
-                img_path = "/".join(pth.parts[-3:])
-                db.add_image(name=img_path, camera_id=camera_id)
+            colmap_feat_match_data = {}
+            for cam_name in ["2_dynA", "3_dynB"]:
+                sub_feature_dir = feature_dir / cam_name
+                sub_image_paths = [
+                    image_path
+                    for image_path in image_paths
+                    if cam_name in str(image_path)
+                ]
+
+                camera_id = create_camera(db, sub_image_paths[0], "simple-pinhole")
+                for pth in sub_image_paths:
+                    img_path = "/".join(pth.parts[-3:])
+                    db.add_image(name=img_path, camera_id=camera_id)
+
+                sub_colmap_feat_match_data = traj_to_matches(
+                    sub_image_paths, sub_feature_dir
+                )
+                colmap_feat_match_data.update(sub_colmap_feat_match_data)
 
             image_ids = {}
             for name, image_id in db.execute("SELECT name, image_id FROM images;"):
                 image_ids[name] = image_id
 
-            colmap_feat_match_data = traj_to_matches(image_paths, feature_dir)
-
             print("Importing keypoints into the database...")
+            keypoint_f = h5py.File(feature_dir / "keypoints.h5", "r")
             for image_name, image_id in image_ids.items():
                 keypoints = np.array(colmap_feat_match_data[image_name].keypoints)
-                keypoints += 0.5  # COLMAP origin
-                if keypoints.shape[0] == 0:
-                    print(f"Warning: No keypoints for image {image_name}, skipping.")
-                    continue
+                # keypoints += 0.5  # COLMAP origin
+                keypoints = np.concatenate(
+                    ([keypoints, keypoint_f[image_name.replace("/", "-")][()]]), axis=0
+                )
+                keypoints = np.unique(keypoints, axis=0)
 
                 db.add_keypoints(image_id, keypoints)
 
             print("Importing matches into the database...")
-            matched = set()
+            added = set()
             for image_name, image_id in image_ids.items():
                 matches = colmap_feat_match_data[image_name].match_pairs
                 for pair, match in matches.items():
                     # get the image name and then id
-                    name0, name1 = pair.split("-")
-                    id0, id1 = image_ids[name0], image_ids[name1]
-                    if len({(id0, id1), (id1, id0)} & matched) > 0:
+                    name_1, name_2 = pair.split("-")
+                    id_1, id_2 = image_ids[name_1], image_ids[name_2]
+
+                    pair_id = image_ids_to_pair_id(id_1, id_2)
+                    if pair_id in added:
+                        warnings.warn(f"Pair ({name_1}, {name_2}) already added!")
                         continue
-                    match = np.array(match)
-                    db.add_matches(id0, id1, match)
-                    matched |= {(id0, id1), (id1, id0)}
+                    added.add(pair_id)
+
+                    db.add_matches(id_1, id_2, np.array(match))
+
+            match_file = h5py.File(feature_dir / "matches.h5", "r")
+            for key_1 in match_file.keys():
+                group = match_file[key_1]
+                id_1 = image_ids[key_1.replace("-", "/")]
+                for key_2 in group.keys():
+                    id_2 = image_ids[key_2.replace("-", "/")]
+
+                    pair_id = image_ids_to_pair_id(id_1, id_2)
+                    if pair_id in added:
+                        warnings.warn(
+                            f"Pair ({image_name}, {key_2.replace('-', '/')}) already added!"
+                        )
+                        continue
+
+                    matches = group[key_2][()]
+                    db.add_matches(id_1, id_2, matches)
+
+                    added.add(pair_id)
 
         db.commit()

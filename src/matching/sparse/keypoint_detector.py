@@ -67,7 +67,7 @@ class KeypointDetector:
             feature_dir / "descriptors.h5", mode="w"
         ) as f_descriptors:
             for path in tqdm(paths, desc="Computing keypoints"):
-                key = path.parts[-3] + "-images-" + path.name
+                key = "-".join(path.parts[-3:])
 
                 with torch.inference_mode():
                     image = self._load_torch_image(path, device=self.device).to(dtype)

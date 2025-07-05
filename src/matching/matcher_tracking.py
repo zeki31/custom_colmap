@@ -37,7 +37,13 @@ class MatcherTracking(Matcher):
 
     def match(self, image_paths: list[Path], feature_dir: Path) -> None:
         start = time()
-        self.tracker.track(image_paths, feature_dir)
+        for cam_name in ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]:
+            sub_feature_dir = feature_dir / cam_name
+            sub_feature_dir.mkdir(parents=True, exist_ok=True)
+            sub_image_paths = [
+                image_path for image_path in image_paths if cam_name in str(image_path)
+            ]
+            self.tracker.track(sub_image_paths, sub_feature_dir)
         lap_tracking = time()
 
         self.detector.detect_keypoints(image_paths, feature_dir)
@@ -45,5 +51,5 @@ class MatcherTracking(Matcher):
         end = time()
 
         self.logger.log({"matching_time": (end - start) // 60})
-        self.logger.summary({"tracking_time": (lap_tracking - start) // 60})
-        self.logger.summary({"sparse_time": (end - lap_tracking) // 60})
+        self.logger.summary["tracking_time"] = (lap_tracking - start) // 60
+        self.logger.summary["sparse_time"] = (end - lap_tracking) // 60
