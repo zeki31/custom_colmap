@@ -1,5 +1,6 @@
 import argparse
 import gc
+import multiprocessing
 import subprocess
 import time
 import warnings
@@ -95,7 +96,7 @@ def main():
                 mapper_options = pycolmap.IncrementalPipelineOptions(
                     max_num_models=cfg.mapper.max_num_models,
                     min_model_size=cfg.mapper.min_model_size,
-                    # num_threads=min(multiprocessing.cpu_count() - 4, 64),
+                    num_threads=min(multiprocessing.cpu_count(), 64),
                 )
                 pycolmap.incremental_mapping(
                     database_path=database_path,

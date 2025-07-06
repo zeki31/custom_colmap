@@ -93,8 +93,8 @@ def add_keypoints(
     return fname_to_id
 
 
-def add_matches(db, h5_path, fname_to_id):
-    match_file = h5py.File(os.path.join(h5_path, "matches.h5"), "r")
+def add_matches(db: COLMAPDatabase, h5_path: Path, fname_to_id: dict[str, int]):
+    match_file = h5py.File(h5_path, "r")
 
     added = set()
     n_keys = len(match_file.keys())

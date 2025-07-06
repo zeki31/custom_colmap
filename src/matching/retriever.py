@@ -38,7 +38,7 @@ class Retriever:
                 # "1_fixed/images",
                 "2_dynA/images",
                 "3_dynB/images",
-                # "4_dynC/images",
+                "4_dynC/images",
             ]
             if self.cfg.duration > 0:
                 image_paths = [

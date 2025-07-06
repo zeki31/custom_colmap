@@ -30,7 +30,7 @@ class MatcherSparse(Matcher):
         self.device = device
 
         self.detector = KeypointDetector(cfg.keypoint_detector, logger, device)
-        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger, device)
+        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger)
 
     def match(
         self,
@@ -39,7 +39,8 @@ class MatcherSparse(Matcher):
     ) -> None:
         start = time()
         self.detector.detect_keypoints(image_paths, feature_dir)
-        self.matcher.keypoint_distances(image_paths, feature_dir)
+        self.matcher.match_keypoints(image_paths, feature_dir)
         end = time()
 
+        print(f"Matching completed in {(end - start) // 60} minutes.")
         self.logger.log({"matching_time": (end - start) // 60})

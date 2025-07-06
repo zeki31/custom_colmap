@@ -32,11 +32,12 @@ class COLMAPImporter:
 
         if matching_type == "sparse":
             fname_to_id = add_keypoints(db, feature_dir, base_dir, "simple-pinhole")
-            add_matches(
-                db,
-                feature_dir,
-                fname_to_id,
-            )
+            for match_file in feature_dir.glob("matches_*.h5"):
+                add_matches(
+                    db,
+                    match_file,
+                    fname_to_id,
+                )
 
         elif matching_type == "tracking":
             colmap_feat_match_data = {}
