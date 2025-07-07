@@ -1,25 +1,25 @@
 defaults:
-  - matcher: sparse
+  - matcher: tracking
 
 # Assume base_dir includes "1_fixed/images", "2_dynA/images", ...
-base_dir: ../sony_ai/20250529/valid/lane/running
+base_dir: ../sony_ai/20250529/valid/lane/running_cinematic
 
 # Will be saved in ${out_dir}/${wandb.name}/${wandb.tags}.
 out_dir: results
 wandb:
   entity: zeki31-global-page
-  project: colmap
-  name: lane_running
-  mode: online
+  project: baseline
+  name: lane_running_test
+  mode: offline
 
 retriever:
   img_dir_type: stream # images / frame / stream
   ext: jpg
   start: 0
-  duration: -1
+  duration: 40
   stride: 1
 
-  comp_ratio: 1
+  comp_ratio: 4
 
 mapper:
   name: colmap

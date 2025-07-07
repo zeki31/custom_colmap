@@ -5,7 +5,6 @@ from typing import Generic, TypeVar
 import torch
 import wandb
 
-from src.matching import MatcherCfg
 from src.matching.retriever import Retriever
 
 T = TypeVar("T")
@@ -14,7 +13,7 @@ T = TypeVar("T")
 class Matcher(ABC, Generic[T]):
     def __init__(
         self,
-        cfg: MatcherCfg,
+        cfg: T,
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
         retriever: Retriever,

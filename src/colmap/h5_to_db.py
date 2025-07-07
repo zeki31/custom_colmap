@@ -77,6 +77,8 @@ def add_keypoints(
     fname_to_id = {}
     for key in tqdm(list(keypoint_f.keys())):
         keypoints = keypoint_f[key][()]
+        if "fixed" in key:
+            continue  # skip fixed keypoints
 
         filename = key.replace("-", "/")
         path = image_path / filename
@@ -98,7 +100,6 @@ def add_matches(
     h5_path: Path,
     fname_to_id: dict[str, int],
     added: set[int],
-    fixed: bool = False,
 ) -> set[int]:
     match_file = h5py.File(h5_path, "r")
 
@@ -109,10 +110,7 @@ def add_matches(
         for key_1 in match_file.keys():
             group = match_file[key_1]
             for key_2 in group.keys():
-                if fixed:
-                    id_1 = fname_to_id[match_file.keys()[0]]
-                else:
-                    id_1 = fname_to_id[key_1]
+                id_1 = fname_to_id[key_1]
                 id_2 = fname_to_id[key_2]
 
                 pair_id = image_ids_to_pair_id(id_1, id_2)
@@ -128,3 +126,38 @@ def add_matches(
                 pbar.update(1)
 
     return added
+
+
+def add_fixed_kpts_matches(
+    db: COLMAPDatabase,
+    h5_path: Path,
+    fname_to_id: dict[str, int],
+    image_path: Path,
+    camera_model: str,
+) -> set[int]:
+    match_file = h5py.File(h5_path, "r")
+
+    camera_id = create_camera(db, image_path, camera_model)
+    id_1 = db.add_image(image_path, camera_id)
+
+    n_keys = len(match_file.keys())
+    n_total = (n_keys * (n_keys - 1)) // 2
+
+    added = set()
+    with tqdm(total=n_total) as pbar:
+        for key_1 in match_file.keys():
+            group = match_file[key_1]
+            for key_2 in group.keys():
+                id_2 = fname_to_id[key_2]
+
+                pair_id = image_ids_to_pair_id(id_1, id_2)
+                if pair_id in added:
+                    warnings.warn(f"Pair {pair_id} ({id_1}, {id_2}) already added!")
+                    continue
+
+                matches = group[key_2][()]
+                db.add_matches(id_1, id_2, matches)
+
+                added.add(pair_id)
+
+                pbar.update(1)

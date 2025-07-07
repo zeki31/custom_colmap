@@ -2,6 +2,7 @@ import multiprocessing as mp
 
 mp.set_start_method("spawn", force=True)
 
+from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import cv2
 import h5py
 import kornia.feature as KF
+import numpy as np
 import torch
 import wandb
 from tqdm import tqdm
@@ -49,14 +51,14 @@ class KeypointMatcher:
     def match_keypoints(
         self,
         paths: list[Path],
-        h5_path: Path,
+        feature_dir: Path,
         index_pairs: list[tuple[int, int]],
     ) -> None:
         """Computes distances between keypoints of images.
 
         Stores output at feature_dir/matches.h5
         """
-        if h5_path.exists():
+        if (feature_dir / "matches.h5").exists():
             return
 
         mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
@@ -77,7 +79,7 @@ class KeypointMatcher:
                     sub_index_pairs,
                     paths,
                     mask_imgs if self.cfg.mask else None,
-                    h5_path,
+                    feature_dir,
                     i_proc,
                 )
                 futures.append(future)
@@ -90,11 +92,9 @@ class KeypointMatcher:
         index_pairs: list[tuple[int, int]],
         paths: list[Path],
         mask_imgs: list[torch.Tensor] | None,
-        h5_path: Path,
+        feature_dir: Path,
         i_proc: int,
     ):
-        feature_dir = h5_path.parent
-
         gpu_id = 0 if i_proc % 2 else 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
@@ -105,7 +105,7 @@ class KeypointMatcher:
         ) as f_keypoints, h5py.File(
             feature_dir / "descriptors.h5", mode="r"
         ) as f_descriptors, h5py.File(
-            (feature_dir / f"{h5_path.stem}_{i_proc}.h5"), mode="w"
+            (feature_dir / f"matches_{i_proc}.h5"), mode="w"
         ) as f_matches:
             for idx1, idx2 in tqdm(
                 index_pairs, desc=f"Matching keypoints in the process {i_proc}"
@@ -160,3 +160,108 @@ class KeypointMatcher:
                         group.create_dataset(
                             key2, data=indices.detach().cpu().numpy().reshape(-1, 2)
                         )
+
+    def match_keypoints_traj(
+        self,
+        paths: list[Path],
+        kpts_per_img: dict[int, tuple[np.ndarray, np.ndarray, list[int], list[int]]],
+        index_pairs: list[tuple[int, int]],
+    ) -> dict[int, dict[int, tuple[np.ndarray, np.ndarray]]]:
+        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
+        if self.cfg.mask and mask_dir.exists():
+            mask_imgs = [
+                torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
+                for path in paths
+            ]
+
+        n_cpu = min(mp.cpu_count(), 20)
+        index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
+
+        futures = []
+        with ProcessPoolExecutor() as executor:
+            for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
+                future = executor.submit(
+                    self._keypoint_distances_traj,
+                    sub_index_pairs,
+                    mask_imgs if self.cfg.mask else None,
+                    kpts_per_img,
+                    i_proc,
+                )
+                futures.append(future)
+                print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
+            result = [f.result() for f in futures]
+
+        matched_traj_ids = defaultdict(dict)
+        for sub_result in result:
+            matched_traj_ids.update(sub_result)
+        return matched_traj_ids
+
+    def _keypoint_distances_traj(
+        self,
+        index_pairs: list[tuple[int, int]],
+        mask_imgs: list[torch.Tensor] | None,
+        kpts_per_img: dict[int, tuple[np.ndarray, np.ndarray, list[int], list[int]]],
+        i_proc: int,
+    ):
+        gpu_id = 0 if i_proc % 2 else 1
+        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+
+        _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
+
+        matched_traj_ids = defaultdict(dict)
+        for idx1, idx2 in tqdm(
+            index_pairs, desc=f"Matching keypoints in the process {i_proc}"
+        ):
+            kpts1, desc1, traj_ids1, idx_in_traj_list1 = kpts_per_img[idx1]
+            kpts2, desc2, traj_ids2, idx_in_traj_list2 = kpts_per_img[idx2]
+
+            keypoints1 = torch.from_numpy(kpts1).to(device)
+            keypoints2 = torch.from_numpy(kpts2).to(device)
+            descriptors1 = torch.from_numpy(desc1).to(device)
+            descriptors2 = torch.from_numpy(desc2).to(device)
+
+            with torch.inference_mode():
+                _, indices = _matcher(
+                    descriptors1,
+                    descriptors2,
+                    KF.laf_from_center_scale_ori(keypoints1[None]),
+                    KF.laf_from_center_scale_ori(keypoints2[None]),
+                )
+
+            # If mask is enabled, remove the matches that are in the mask
+            if self.cfg.mask:
+                mask_img1 = mask_imgs[idx1].to(device)
+
+                # Get the pixel positions of the matches
+                matched_keypoints1 = keypoints1[indices[:, 0], :2]
+
+                mask1 = mask_img1[
+                    matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
+                ]
+                masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
+                indices1 = torch.nonzero(
+                    torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
+                )[0].unique()
+                indices = indices[
+                    torch.nonzero(
+                        torch.isin(indices.reshape(2, -1)[0], indices1),
+                        as_tuple=True,
+                    )[0].unique(),
+                    :,
+                ]
+
+            # Leave only the trajectory that starts from the frame
+            indices = indices[
+                (idx_in_traj_list1[indices[:, 0]] == 0)
+                & (idx_in_traj_list2[indices[:, 1]] == 0)
+            ]
+
+            # We have matches to consider
+            if len(indices) >= self.cfg.min_matches:
+                # Store the matched trajectory as:  dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
+                matched_traj_ids[idx1][idx2] = (
+                    traj_ids1[indices[:, 0]],
+                    traj_ids2[indices[:, 1]],
+                )
+
+        return matched_traj_ids

@@ -11,6 +11,7 @@ from typing import Literal
 import numpy as np
 import torch
 import wandb
+from tqdm import tqdm
 
 from src.matching.matcher import Matcher
 from src.matching.retriever import Retriever
@@ -28,7 +29,7 @@ class MatcherTrackingCfg:
     keypoint_matcher: KeypointMatcherCfg
 
 
-class MatcherTracking(Matcher):
+class MatcherTracking(Matcher[MatcherTrackingCfg]):
     def __init__(
         self,
         cfg: MatcherTrackingCfg,
@@ -38,11 +39,15 @@ class MatcherTracking(Matcher):
     ):
         super().__init__(cfg, logger, device, retriever)
 
-        self.tracker = Tracker(cfg.tracker, logger, device)
+        self.tracker = Tracker(cfg.tracker, logger)
         self.detector = KeypointDetector(cfg.keypoint_detector, logger, device)
         self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger)
 
     def match(self, image_paths: list[Path], feature_dir: Path) -> None:
+        if (feature_dir / "track.npy").exists():
+            print("Tracking already done, skipping.")
+            return
+
         start = time()
         futures = []
         with ProcessPoolExecutor(max_workers=2) as executor:
@@ -65,6 +70,7 @@ class MatcherTracking(Matcher):
 
             result = [f.result() for f in futures]
         lap_tracking = time()
+        print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
 
         # Merge all trajectories
         dict_trajs = {}
@@ -74,12 +80,54 @@ class MatcherTracking(Matcher):
             ).trajs
             dict_trajs.update(trajs)
         trajectories = TrajectorySet(dict_trajs)
+
         trajectories.build_invert_indexes()
 
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "exhaustive_keyframe", self.cfg.tracker.window_len
         )
-        self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
+        # Get keypoints for each image from trajectories
+        keypoints_per_image = {}
+        for frame_id in trajectories.invert_maps:
+            kp_list = []
+            desc_list = []
+            traj_list = []
+            idx_in_traj_list = []
+            for traj_id, idx_in_traj in trajectories.invert_maps[frame_id].items():
+                traj = trajectories.trajs[traj_id]
+                kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
+                desc = traj.descs[idx_in_traj]
+                kp_list.append(kp)
+                desc_list.append(desc)
+                traj_list.append(traj_id)
+                idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
+            keypoints_per_image[frame_id] = (
+                np.array(kp_list),
+                np.array(desc_list),
+                traj_list,
+                idx_in_traj_list,
+            )
+
+        # Match trajectories for each pair: dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
+        matched_traj_ids = self.matcher.match_keypoints_traj(
+            image_paths, keypoints_per_image, index_pairs
+        )
+
+        # Propagate matches to trajectories
+        for frame_i in tqdm(matched_traj_ids):
+            for frame_j in matched_traj_ids[frame_i]:
+                traj_pairs = matched_traj_ids[frame_i][
+                    frame_j
+                ]  # List of (traj_id_i, traj_id_j)
+                for traj_id_i, traj_id_j in traj_pairs:
+                    traj_j = trajectories.trajs[traj_id_j]
+                    # Append data from traj_j to traj_i
+                    trajectories.trajs[traj_id_i].times.extend(traj_j.times)
+                    trajectories.trajs[traj_id_i].xys.extend(traj_j.xys)
+                    # trajectories.trajs[traj_id_i].descs.extend(traj_j.descs)
+
+        np.save(feature_dir / "track.npy", trajectories)
+
         end = time()
 
         self.logger.log({"matching_time": (end - start) // 60})

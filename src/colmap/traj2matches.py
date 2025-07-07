@@ -36,9 +36,9 @@ class imageMatchData:
         # kp_ind2: the keypoint index in target matched image (refered by tgt_img_id)
         match_key = str(self.image_id) + "-" + str(tgt_img_id)
         if match_key in self.match_pairs.keys():
-            self.match_pairs[match_key].append([kp_ind1, kp_ind2])
+            self.match_pairs[match_key].add((kp_ind1, kp_ind2))
         else:
-            self.match_pairs[match_key] = [[kp_ind1, kp_ind2]]
+            self.match_pairs[match_key] = set(((kp_ind1, kp_ind2),))
 
     def rename_matches(self, image_names: list[Path]):
         # rename the matching pairs, replace the sorted id to image names
@@ -72,12 +72,9 @@ def traj_to_matches(image_paths: list[Path], feature_dir: Path):
     for i in range(len(image_paths)):
         image_datas.append(imageMatchData(image_id=i))
 
+    mask_dir = Path(str(image_paths[0].parent).replace("images", "masks"))
     mask_imgs = [
-        cv2.resize(
-            cv2.imread(pth.parents[1] / "masks" / pth.name, cv2.IMREAD_GRAYSCALE),
-            (480, 270),
-        )
-        for pth in image_paths
+        cv2.imread(mask_dir / pth.name, cv2.IMREAD_GRAYSCALE) for pth in image_paths
     ]
 
     for traj in tqdm(trajectories.values(), desc="Processing trajectories"):

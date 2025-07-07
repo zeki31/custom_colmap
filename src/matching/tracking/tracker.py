@@ -26,31 +26,32 @@ class Tracker:
         self,
         cfg: TrackerCfg,
         logger: wandb.sdk.wandb_run.Run,
-        device: torch.device,
     ):
         self.cfg = cfg
         self.logger = logger
-        self.device = device
 
-        self.point_tracker = CoTrackerPredictor(
-            checkpoint=self.cfg.ckpt_path,
-            v2=False,
-            offline=True,
-            window_len=60,
-        ).to(self.device)
-
-    def track(self, image_paths: list[Path], feature_dir: Path) -> None:
+    def track(self, image_paths: list[Path], feature_dir: Path, i_proc: int) -> None:
         """Sequentially track point trajectories"""
         if (feature_dir / "track.npy").exists():
             return
 
+        gpu_id = 0 if i_proc % 2 else 1
+        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+
         h, w = cv2.imread(image_paths[0]).shape[:2]
         stride = self.cfg.window_len - self.cfg.overlap
         trajs = IncrementalTrajectorySet(
-            len(image_paths) + 1, h, w, self.cfg.sample_ratio
+            len(image_paths) + 1, h, w, self.cfg.sample_ratio, device, image_paths[0]
         )
 
-        start_t = 0
+        point_tracker = CoTrackerPredictor(
+            checkpoint=self.cfg.ckpt_path,
+            v2=False,
+            offline=True,
+            window_len=60,
+        ).to(device)
+
+        start_t = i_proc * len(image_paths)
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
                 end_t = start_t + self.cfg.window_len
@@ -61,23 +62,20 @@ class Tracker:
                     frames.append(np.array(im))
                 video = np.stack(frames)
                 video = (
-                    torch.from_numpy(video)
-                    .permute(0, 3, 1, 2)[None]
-                    .float()
-                    .to(self.device)
+                    torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
                 )
 
                 grid_pts = (
                     torch.from_numpy(trajs.sample_candidates)
                     .reshape(1, -1, 2)
                     .float()
-                    .to(self.device)
+                    .to(device)
                 )
                 queries = torch.cat(
                     [torch.ones_like(grid_pts[:, :, :1]) * 0, grid_pts],
                     dim=2,
                 ).repeat(1, 1, 1)
-                pred_tracks, pred_visibility = self.point_tracker(
+                pred_tracks, pred_visibility = point_tracker(
                     video,
                     queries=queries,
                     grid_query_frame=0,
@@ -117,7 +115,7 @@ class Tracker:
                             pred_tracks[timestep + 1][viz_mask],
                             frame_id + 1,
                             pred_visibility[timestep + 1][viz_mask],
-                            add_non_active=True,
+                            frames[-1],
                         )
                     else:
                         trajs.extend_all(
@@ -134,9 +132,10 @@ class Tracker:
 
         # Save the outputs
         dict_trajs = {}
+        start_t = i_proc * len(image_paths)
         for idx, traj in enumerate(trajs.full_trajs):
             if traj.length() < self.cfg.traj_min_len:
                 continue
-            dict_trajs[idx] = traj
+            dict_trajs[idx + start_t] = traj
         trajectories = TrajectorySet(dict_trajs)
         np.save(feature_dir / "track.npy", trajectories)
