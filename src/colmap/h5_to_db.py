@@ -93,10 +93,15 @@ def add_keypoints(
     return fname_to_id
 
 
-def add_matches(db: COLMAPDatabase, h5_path: Path, fname_to_id: dict[str, int]):
+def add_matches(
+    db: COLMAPDatabase,
+    h5_path: Path,
+    fname_to_id: dict[str, int],
+    added: set[int],
+    fixed: bool = False,
+) -> set[int]:
     match_file = h5py.File(h5_path, "r")
 
-    added = set()
     n_keys = len(match_file.keys())
     n_total = (n_keys * (n_keys - 1)) // 2
 
@@ -104,7 +109,10 @@ def add_matches(db: COLMAPDatabase, h5_path: Path, fname_to_id: dict[str, int]):
         for key_1 in match_file.keys():
             group = match_file[key_1]
             for key_2 in group.keys():
-                id_1 = fname_to_id[key_1]
+                if fixed:
+                    id_1 = fname_to_id[match_file.keys()[0]]
+                else:
+                    id_1 = fname_to_id[key_1]
                 id_2 = fname_to_id[key_2]
 
                 pair_id = image_ids_to_pair_id(id_1, id_2)
@@ -118,3 +126,5 @@ def add_matches(db: COLMAPDatabase, h5_path: Path, fname_to_id: dict[str, int]):
                 added.add(pair_id)
 
                 pbar.update(1)
+
+    return added

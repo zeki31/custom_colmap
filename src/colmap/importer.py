@@ -32,11 +32,23 @@ class COLMAPImporter:
 
         if matching_type == "sparse":
             fname_to_id = add_keypoints(db, feature_dir, base_dir, "simple-pinhole")
+            added = set()
             for match_file in feature_dir.glob("matches_*.h5"):
-                add_matches(
+                if "fixed" in match_file.name:
+                    continue
+                added = add_matches(
                     db,
                     match_file,
                     fname_to_id,
+                    added,
+                )
+            for match_file in feature_dir.glob("matches_fixed_*.h5"):
+                added = add_matches(
+                    db,
+                    match_file,
+                    fname_to_id,
+                    added,
+                    fixed=True,
                 )
 
         elif matching_type == "tracking":
@@ -64,14 +76,9 @@ class COLMAPImporter:
                 image_ids[name] = image_id
 
             print("Importing keypoints into the database...")
-            keypoint_f = h5py.File(feature_dir / "keypoints.h5", "r")
             for image_name, image_id in image_ids.items():
                 keypoints = np.array(colmap_feat_match_data[image_name].keypoints)
                 # keypoints += 0.5  # COLMAP origin
-                keypoints = np.concatenate(
-                    ([keypoints, keypoint_f[image_name.replace("/", "-")][()]]), axis=0
-                )
-                keypoints = np.unique(keypoints, axis=0)
 
                 db.add_keypoints(image_id, keypoints)
 

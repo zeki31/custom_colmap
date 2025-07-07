@@ -7,6 +7,7 @@ import torch
 import wandb
 
 from src.matching.matcher import Matcher
+from src.matching.retriever import Retriever
 from src.matching.sparse.keypoint_detector import KeypointDetector, KeypointDetectorCfg
 from src.matching.sparse.keypoint_matcher import KeypointMatcher, KeypointMatcherCfg
 
@@ -14,6 +15,7 @@ from src.matching.sparse.keypoint_matcher import KeypointMatcher, KeypointMatche
 @dataclass
 class MatcherSparseCfg:
     name: Literal["sparse"]
+    pair_generator: Literal["exhaustive", "frame-view", "view"]
     keypoint_detector: KeypointDetectorCfg
     keypoint_matcher: KeypointMatcherCfg
 
@@ -24,11 +26,9 @@ class MatcherSparse(Matcher):
         cfg: MatcherSparseCfg,
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
+        retriever: Retriever,
     ):
-        self.cfg = cfg
-        self.logger = logger
-        self.device = device
-
+        super().__init__(cfg, logger, device, retriever)
         self.detector = KeypointDetector(cfg.keypoint_detector, logger, device)
         self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger)
 
@@ -39,8 +39,21 @@ class MatcherSparse(Matcher):
     ) -> None:
         start = time()
         self.detector.detect_keypoints(image_paths, feature_dir)
-        self.matcher.match_keypoints(image_paths, feature_dir)
-        end = time()
+        index_pairs = self.retriever.get_index_pairs(
+            image_paths, self.cfg.pair_generator
+        )
+        self.matcher.match_keypoints(
+            image_paths, (feature_dir / "matches.h5"), index_pairs
+        )
+        lap = time()
 
-        print(f"Matching completed in {(end - start) // 60} minutes.")
-        self.logger.log({"matching_time": (end - start) // 60})
+        print(f"Matching completed in {(lap - start) // 60} minutes.")
+        self.logger.log({"matching_time": (lap - start) // 60})
+
+        index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
+        self.matcher.match_keypoints(
+            image_paths, (feature_dir / "matches_fixed.h5"), index_pairs_fixed
+        )
+
+        print(f"Matching with fixed pairs completed in {(time() - lap) // 60} minutes.")
+        self.logger.log({"matching_fixed_time": (time() - lap) // 60})

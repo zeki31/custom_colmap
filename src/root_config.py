@@ -6,17 +6,9 @@ import yaml
 from dacite import Config, from_dict
 from omegaconf import OmegaConf
 
+from src.mapping.mapper import MapperCfg
 from src.matching import MatcherCfg
 from src.matching.retriever import RetrieverCfg
-
-
-@dataclass
-class MapperCfg:
-    name: Literal["colmap", "glomap"] = "colmap"
-    max_num_models: int = 2
-    # By default colmap does not generate a reconstruction
-    # if less than 10 images are registered. Lower it to 3.
-    min_model_size: int = 3
 
 
 @dataclass

@@ -1,3 +1,4 @@
+import itertools
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
@@ -35,7 +36,7 @@ class Retriever:
 
         elif self.cfg.img_dir_type == "stream":
             cam_dirs = [
-                # "1_fixed/images",
+                "1_fixed/images",
                 "2_dynA/images",
                 "3_dynB/images",
                 "4_dynC/images",
@@ -63,15 +64,21 @@ class Retriever:
         print(f"Got {len(image_paths)} images")
         self.logger.summary["n_images"] = len(image_paths)
 
-        if self.cfg.comp_ratio is None:
+        if self.cfg.comp_ratio == 1:
             return image_paths
 
+        image_paths_resized = self._resize_imgs(image_paths, "images")
+        _ = self._resize_imgs(image_paths, "masks")
+
+        return image_paths_resized
+
+    def _resize_imgs(
+        self, image_paths: list[Path], label: Literal["images", "masks"]
+    ) -> list[Path]:
         image_paths_resized = [
-            Path(str(img_path).replace("images", "images_resized"))
+            Path(str(img_path).replace(label, f"{label}_resized"))
             for img_path in image_paths
         ]
-        if not image_paths == [] and image_paths_resized[0].exists():
-            return image_paths_resized
 
         image_paths_resized[0].parent.mkdir(parents=True, exist_ok=True)
         image_paths_resized = []
@@ -85,11 +92,70 @@ class Retriever:
                 ),
             )
 
-            img_path_resized = Path(str(img_path).replace("images", "images_resized"))
-            if not img_path_resized.parent.exists():
-                img_path_resized.parent.mkdir(parents=True, exist_ok=True)
+            img_path_resized = Path(str(img_path).replace(label, f"{label}_resized"))
 
             cv2.imwrite(str(img_path_resized), img_resized)
             image_paths_resized.append(img_path_resized)
 
         return image_paths_resized
+
+    def get_index_pairs(
+        self,
+        paths: list[Path],
+        pair_generator: Literal["exhaustive", "frame-view", "view"],
+        window_len: Optional[int] = None,
+    ) -> list[tuple[int, int]]:
+        if pair_generator == "exhaustive":
+            # Obtains all possible index pairs of a list
+            pairs = list(itertools.combinations(range(len(paths)), 2))
+
+        if pair_generator == "exhaustive_dynamic":
+            # Obtains all possible index pairs only for dynamic cameras
+            dyn_cam_indices = range(len(paths) // 4, len(paths))
+            pairs = list(itertools.combinations(dyn_cam_indices, 2))
+            print(f"Pairs among dynamic cameras: {len(pairs)}")
+
+        elif pair_generator == "frame-view":
+            # Obtains only adjacent pairs
+            # (different timestamp, same camera)
+            pairs = []
+            for i in range(len(paths) - 1):
+                pairs.append((i, i + 1))
+            # Collect the every self.cfg.duration-th pair
+            # (same timestamp, different cameras)
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend(
+                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
+                )
+            pairs = sorted(set(pairs))  # Remove duplicates
+
+        elif pair_generator == "view":
+            # Obtains only adjacent cameras
+            # (same timestamp, different cameras)
+            pairs = []
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend(
+                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
+                )
+            pairs = sorted(set(pairs))  # Remove duplicates
+
+        elif pair_generator == "exhaustive_keyframe":
+            keyframe_indices = range(0, len(paths), window_len)
+            pairs = list(itertools.combinations(keyframe_indices, 2))
+            # Exclude pairs from the same view
+            pairs = [pair for pair in pairs if pair[1] - pair[0] >= window_len]
+            print(f"Keyframe pairs (excluding pairs from the same view): {len(pairs)}")
+
+        elif pair_generator == "fixed":
+            # Obtains only adjacent cameras with the fixed camera
+            # (same timestamp, different cameras)
+            pairs = []
+            n_frames = len(paths) // 4
+            for t in range(n_frames):
+                pairs.extend([(t, t + i * n_frames) for i in range(1, 4)])
+            pairs = sorted(set(pairs))  # Remove duplicates
+            print(f"Pairs with fixed camera (same frame): {len(pairs)}")
+
+        return pairs

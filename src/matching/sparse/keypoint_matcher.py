@@ -1,11 +1,10 @@
-import itertools
 import multiprocessing as mp
+
 mp.set_start_method("spawn", force=True)
 
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import cv2
 import h5py
@@ -17,7 +16,6 @@ from tqdm import tqdm
 
 @dataclass
 class KeypointMatcherCfg:
-    pair_generator: Literal["exhaustive", "frame-view", "view"] = "exhaustive"
     min_matches: int = 15
     verbose: bool = True
     mask: bool = False
@@ -38,40 +36,6 @@ class KeypointMatcher:
             "mp": True,
         }
 
-    def _get_index_pairs(
-        self,
-        paths: list[Path],
-    ) -> list[tuple[int, int]]:
-        if self.cfg.pair_generator == "exhaustive":
-            # Obtains all possible index pairs of a list
-            pairs = list(itertools.combinations(range(len(paths)), 2))
-        elif self.cfg.pair_generator == "frame-view":
-            # Obtains only adjacent pairs
-            # (different timestamp, same camera)
-            pairs = []
-            for i in range(len(paths) - 1):
-                pairs.append((i, i + 1))
-            # Collect the every self.cfg.duration-th pair
-            # (same timestamp, different cameras)
-            n_frames = len(paths) // 4
-            for t in range(n_frames):
-                pairs.extend(
-                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
-                )
-            pairs = sorted(set(pairs))  # Remove duplicates
-        elif self.cfg.pair_generator == "view":
-            # Obtains only adjacent cameras
-            # (same timestamp, different cameras)
-            pairs = []
-            n_frames = len(paths) // 4
-            for t in range(n_frames):
-                pairs.extend(
-                    list(itertools.combinations(range(t, len(paths), n_frames), 2))
-                )
-            pairs = sorted(set(pairs))  # Remove duplicates
-
-        return pairs
-
     def _chunkify(
         self,
         pairs: list[tuple[int, int]],
@@ -85,23 +49,23 @@ class KeypointMatcher:
     def match_keypoints(
         self,
         paths: list[Path],
-        feature_dir: Path,
+        h5_path: Path,
+        index_pairs: list[tuple[int, int]],
     ) -> None:
         """Computes distances between keypoints of images.
 
         Stores output at feature_dir/matches.h5
         """
-        if (feature_dir / "matches_0.h5").exists():
+        if h5_path.exists():
             return
 
-        if self.cfg.mask and (paths[0].parents[1] / "masks").exists():
-            mask_dir = paths[0].parents[1] / "masks"
+        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
+        if self.cfg.mask and mask_dir.exists():
             mask_imgs = [
                 torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
                 for path in paths
             ]
 
-        index_pairs = self._get_index_pairs(paths)
         n_cpu = min(mp.cpu_count(), 20)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
@@ -113,7 +77,7 @@ class KeypointMatcher:
                     sub_index_pairs,
                     paths,
                     mask_imgs if self.cfg.mask else None,
-                    feature_dir,
+                    h5_path,
                     i_proc,
                 )
                 futures.append(future)
@@ -126,9 +90,11 @@ class KeypointMatcher:
         index_pairs: list[tuple[int, int]],
         paths: list[Path],
         mask_imgs: list[torch.Tensor] | None,
-        feature_dir: Path,
+        h5_path: Path,
         i_proc: int,
     ):
+        feature_dir = h5_path.parent
+
         gpu_id = 0 if i_proc % 2 else 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
@@ -139,7 +105,7 @@ class KeypointMatcher:
         ) as f_keypoints, h5py.File(
             feature_dir / "descriptors.h5", mode="r"
         ) as f_descriptors, h5py.File(
-            (feature_dir / f"matches_{i_proc}.h5"), mode="w"
+            (feature_dir / f"{h5_path.stem}_{i_proc}.h5"), mode="w"
         ) as f_matches:
             for idx1, idx2 in tqdm(
                 index_pairs, desc=f"Matching keypoints in the process {i_proc}"
