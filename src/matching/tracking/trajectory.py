@@ -4,7 +4,7 @@ import kornia as K
 import numpy as np
 import scipy
 import torch
-from jaxtyping import Float
+from jaxtyping import Bool, Float
 from numpy.typing import NDArray
 from tqdm import tqdm
 
@@ -66,7 +66,9 @@ class IncrementalTrajectorySet(object):
             .to(self.device, self.dtype)
         )
 
-        self.sample_candidates = self.generate_all_candidates(init_frame_path)
+        self.sample_candidates, self.candidate_desc = self.generate_all_candidates(
+            init_frame_path
+        )
 
     def _load_torch_image(self, file_name: Path | str, device=torch.device("cpu")):
         """Loads an image and adds batch dimension"""
@@ -75,7 +77,9 @@ class IncrementalTrajectorySet(object):
         ]
         return img
 
-    def generate_all_candidates(self, frame_path: Path) -> Float[NDArray, "N 2"]:
+    def generate_all_candidates(
+        self, frame_path: Path
+    ) -> tuple[Float[NDArray, "1 N 2"], Float[NDArray, "N D"]]:
         # # Grid sampling of the image
         # x, y = np.arange(0, self.w), np.arange(0, self.h)
         # xx, yy = np.meshgrid(x, y)
@@ -88,21 +92,36 @@ class IncrementalTrajectorySet(object):
             )
             features = self.extractor.extract(image)
         kpts = features["keypoints"].detach().cpu().numpy()  # shape: (N, 2)
-        return kpts
+        descs = (
+            features["descriptors"].detach().cpu().numpy().squeeze(0)
+        )  # shape: (N, D)
+        return kpts, descs
 
-    def new_traj_all(self, start_times, start_xys):
-        for time, xy in zip(start_times, start_xys):
-            t = Trajectory(time, xy)
+    def new_traj_all(self, start_times, start_xys, start_desc=None):
+        start_desc = start_desc if start_desc is not None else self.candidate_desc
+        for time, xy, desc in zip(start_times, start_xys, start_desc):
+            t = Trajectory(time, xy, desc)
             self.active_trajs.append(t)
 
-    def get_cur_pos(self):
+    def get_cur_pos(
+        self,
+    ) -> tuple[Float[NDArray, "N_curr 2"], Float[NDArray, "N_curr D"]]:
         # Get all the current traj positions
         cur_pos = []
+        cur_desc = []
         for i in range(len(self.active_trajs)):
             cur_pos.append(self.active_trajs[i].get_tail_location())
-        return np.array(cur_pos)
+            cur_desc.append(self.active_trajs[i].descs[-1])
+        return np.array(cur_pos), np.array(cur_desc)
 
-    def extend_all(self, next_xys, next_time: int, flags, frame_path: Path = None):
+    def extend_all(
+        self,
+        next_xys: Float[NDArray, "N 2"],
+        next_time: int,
+        flags: Bool[NDArray, "N"],
+        next_descs: Float[NDArray, "N D"],
+        frame_path: Path = None,
+    ):
         # Extend all the trajs
         assert len(next_xys) == len(
             self.active_trajs
@@ -114,12 +133,13 @@ class IncrementalTrajectorySet(object):
 
         new_active_trajs = []
         for i in range(len(flags)):
-            next_xy, flag = next_xys[i], flags[i]
+            next_xy, flag, next_desc = next_xys[i], flags[i], next_descs[i]
+            # flag = flag if int(next_xy[0]) < self.w and int(next_xy[1]) < self.h else False
             if not flag:
                 self.full_trajs.append(self.active_trajs[i])
             else:
-                occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
-                self.active_trajs[i].extend(next_time, next_xy)
+                occupied_map[int(next_xy[1]) - 1, int(next_xy[0]) - 1] = 1
+                self.active_trajs[i].extend(next_time, next_xy, next_desc)
                 new_active_trajs.append(self.active_trajs[i])
 
         self.active_trajs = new_active_trajs
@@ -131,13 +151,23 @@ class IncrementalTrajectorySet(object):
         occupied_map_trans = scipy.ndimage.morphology.distance_transform_edt(
             1.0 - occupied_map
         )  # [H, W, 1]
-        extracted_pts = self.generate_all_candidates(frame_path)  # [N, 2]
+        extracted_pts, extracted_descs = self.generate_all_candidates(
+            frame_path
+        )  # [N, 2]
 
         # Get current active query points
-        active_pts = self.get_cur_pos()  # shape: (N_active, 2)
+        active_pts, active_pts_desc = self.get_cur_pos()  # shape: (N_active, 2)
         # Sample the candidates that are not occupied
-        sample_map = occupied_map_trans[extracted_pts] > self.ratio
+        extracted_pts = extracted_pts.squeeze(0)  # shape: (N, 2)
+        xs = extracted_pts[:, 0].astype(int)
+        ys = extracted_pts[:, 1].astype(int)
+        # If occupied_map_trans has shape (H, W, 1), squeeze the last dimension
+        distances = occupied_map_trans[ys - 1, xs - 1].squeeze()  # shape: (N,)
+        sample_map = distances > self.ratio
         non_active_candidates = extracted_pts[sample_map]
+        non_active_candidates_desc = extracted_descs[sample_map]
+        # print(f"Active points: {active_pts.shape}, Non-active candidates: {non_active_candidates.shape}")
+
         # Combine active points and non-active candidates
         total_needed = 4096
         n_active = len(active_pts)
@@ -147,12 +177,17 @@ class IncrementalTrajectorySet(object):
                 len(non_active_candidates), n_non_active_needed, replace=False
             )
             chosen_non_active = non_active_candidates[idx]
+            chosen_non_active_desc = non_active_candidates_desc[idx]
         else:
             chosen_non_active = non_active_candidates
+            chosen_non_active_desc = non_active_candidates_desc
 
         times = (np.ones(chosen_non_active.shape[0]) * next_time).astype(int)
-        self.new_traj_all(times, chosen_non_active)
+        self.new_traj_all(times, chosen_non_active, chosen_non_active_desc)
         self.sample_candidates = np.concatenate([active_pts, chosen_non_active], axis=0)
+        self.candidate_desc = np.concatenate(
+            [active_pts_desc, chosen_non_active_desc], axis=0
+        )
 
     def clear_active(self):
         for traj in self.active_trajs:

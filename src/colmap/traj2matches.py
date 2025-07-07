@@ -24,12 +24,12 @@ from tqdm import tqdm
 class imageMatchData:
     def __init__(self, image_id: int):
         self.image_id = image_id
-        self.keypoints = []
+        self.keypoints = set()
         self.match_pairs = {}
 
     def insert_keypoint(self, kp1):
         # kp1: [x,y]
-        self.keypoints.append(kp1)
+        self.keypoints.add(kp1)
 
     def insert_match(self, tgt_img_id, kp_ind1, kp_ind2):
         # kp_ind1: the keypoint index in current image
@@ -90,6 +90,8 @@ def traj_to_matches(image_paths: list[Path], feature_dir: Path):
                 continue
 
             mx, my, img_id = float(mx), float(my), int(img_id)
+            if img_id < len(image_paths) // 4:
+                img_id = 0
             image_datas[img_id].insert_keypoint([mx, my])
             ind = len(image_datas[img_id].keypoints) - 1
             kp_inds.append(ind)

@@ -13,6 +13,8 @@ import kornia.feature as KF
 import numpy as np
 import torch
 import wandb
+from jaxtyping import Float, Int
+from numpy.typing import NDArray
 from tqdm import tqdm
 
 
@@ -164,7 +166,15 @@ class KeypointMatcher:
     def match_keypoints_traj(
         self,
         paths: list[Path],
-        kpts_per_img: dict[int, tuple[np.ndarray, np.ndarray, list[int], list[int]]],
+        kpts_per_img: dict[
+            int,
+            tuple[
+                Float[NDArray, "... 2"],
+                Float[NDArray, "... D"],
+                Int[NDArray, "..."],
+                Int[NDArray, "..."],
+            ],
+        ],
         index_pairs: list[tuple[int, int]],
     ) -> dict[int, dict[int, tuple[np.ndarray, np.ndarray]]]:
         mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
@@ -174,7 +184,7 @@ class KeypointMatcher:
                 for path in paths
             ]
 
-        n_cpu = min(mp.cpu_count(), 20)
+        n_cpu = min(mp.cpu_count(), 10)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
         futures = []
@@ -190,9 +200,15 @@ class KeypointMatcher:
                 futures.append(future)
                 print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
             result = [f.result() for f in futures]
+        # result = self._keypoint_distances_traj(
+        #     index_pairs,
+        #     mask_imgs if self.cfg.mask else None,
+        #     kpts_per_img,
+        #     0,
+        # )
 
         matched_traj_ids = defaultdict(dict)
-        for sub_result in result:
+        for sub_result in [result]:
             matched_traj_ids.update(sub_result)
         return matched_traj_ids
 
@@ -200,7 +216,15 @@ class KeypointMatcher:
         self,
         index_pairs: list[tuple[int, int]],
         mask_imgs: list[torch.Tensor] | None,
-        kpts_per_img: dict[int, tuple[np.ndarray, np.ndarray, list[int], list[int]]],
+        kpts_per_img: dict[
+            int,
+            tuple[
+                Float[NDArray, "... 2"],
+                Float[NDArray, "... D"],
+                Int[NDArray, "..."],
+                Int[NDArray, "..."],
+            ],
+        ],
         i_proc: int,
     ):
         gpu_id = 0 if i_proc % 2 else 1
@@ -212,6 +236,8 @@ class KeypointMatcher:
         for idx1, idx2 in tqdm(
             index_pairs, desc=f"Matching keypoints in the process {i_proc}"
         ):
+            if idx1 not in kpts_per_img or idx2 not in kpts_per_img:
+                continue
             kpts1, desc1, traj_ids1, idx_in_traj_list1 = kpts_per_img[idx1]
             kpts2, desc2, traj_ids2, idx_in_traj_list2 = kpts_per_img[idx2]
 
@@ -220,6 +246,18 @@ class KeypointMatcher:
             descriptors1 = torch.from_numpy(desc1).to(device)
             descriptors2 = torch.from_numpy(desc2).to(device)
 
+            print(
+                max(keypoints1[:, 0]),
+                max(keypoints1[:, 1]),
+                min(keypoints1[:, 0]),
+                min(keypoints1[:, 1]),
+            )
+            print(
+                max(keypoints2[:, 0]),
+                max(keypoints2[:, 1]),
+                min(keypoints2[:, 0]),
+                min(keypoints2[:, 1]),
+            )
             with torch.inference_mode():
                 _, indices = _matcher(
                     descriptors1,
@@ -250,18 +288,20 @@ class KeypointMatcher:
                     :,
                 ]
 
-            # Leave only the trajectory that starts from the frame
-            indices = indices[
-                (idx_in_traj_list1[indices[:, 0]] == 0)
-                & (idx_in_traj_list2[indices[:, 1]] == 0)
-            ]
-
             # We have matches to consider
-            if len(indices) >= self.cfg.min_matches:
-                # Store the matched trajectory as:  dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
-                matched_traj_ids[idx1][idx2] = (
-                    traj_ids1[indices[:, 0]],
-                    traj_ids2[indices[:, 1]],
-                )
+            if len(indices):
+                # Leave only the trajectory that starts from the frame
+                indices = indices.detach().cpu().numpy().astype(int)
+                indices = indices[
+                    (idx_in_traj_list1[indices[:, 0]] == 0)
+                    & (idx_in_traj_list2[indices[:, 1]] == 0)
+                ]
+
+                if len(indices) >= self.cfg.min_matches:
+                    # Store the matched trajectory as:  dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
+                    matched_traj_ids[idx1][idx2] = (
+                        traj_ids1[indices[:, 0]],
+                        traj_ids2[indices[:, 1]],
+                    )
 
         return matched_traj_ids

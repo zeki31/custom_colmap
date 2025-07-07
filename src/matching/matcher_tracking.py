@@ -2,6 +2,7 @@ import multiprocessing as mp
 
 mp.set_start_method("spawn", force=True)
 
+from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,10 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]
             ):
                 sub_feature_dir = feature_dir / cam_name
+                if (sub_feature_dir / "track.npy").exists():
+                    print(f"Skipping {cam_name} as it already exists.")
+                    continue
+
                 sub_feature_dir.mkdir(parents=True, exist_ok=True)
                 sub_image_paths = [
                     image_path
@@ -69,15 +74,27 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 print(f"Chunk {i_proc + 1}/4 submitted.")
 
             result = [f.result() for f in futures]
+
+        # for i_proc, cam_name in enumerate(["1_fixed", "2_dynA", "3_dynB", "4_dynC"]):
+        #     sub_feature_dir = feature_dir / cam_name
+        #     sub_feature_dir.mkdir(parents=True, exist_ok=True)
+        #     sub_image_paths = [
+        #         image_path for image_path in image_paths if cam_name in str(image_path)
+        #     ]
+        #     print(f"Processing chunk {i_proc + 1}/4: {cam_name}")
+        #     self.tracker.track(sub_image_paths, sub_feature_dir, i_proc)
+
         lap_tracking = time()
         print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
 
         # Merge all trajectories
-        dict_trajs = {}
+        dict_trajs = defaultdict(dict)
         for i_proc, cam_name in enumerate(["1_fixed", "2_dynA", "3_dynB", "4_dynC"]):
-            trajs = np.load(
-                feature_dir / cam_name / "track.npy", allow_pickle=True
-            ).trajs
+            trajs = (
+                np.load(feature_dir / cam_name / "track.npy", allow_pickle=True)
+                .item()
+                .trajs
+            )
             dict_trajs.update(trajs)
         trajectories = TrajectorySet(dict_trajs)
 
@@ -101,11 +118,11 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 desc_list.append(desc)
                 traj_list.append(traj_id)
                 idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
-            keypoints_per_image[frame_id] = (
+            keypoints_per_image[int(frame_id)] = (
                 np.array(kp_list),
                 np.array(desc_list),
-                traj_list,
-                idx_in_traj_list,
+                np.array(traj_list, dtype=int),
+                np.array(idx_in_traj_list, dtype=int),
             )
 
         # Match trajectories for each pair: dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)

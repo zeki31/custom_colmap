@@ -55,8 +55,6 @@ def main():
         matcher.match(image_paths, feature_dir)
         gc.collect()
 
-        exit()
-
         # Import keypoint distances of matches into colmap for RANSAC
         importer = COLMAPImporter(logger)
         importer.import_into_colmap(

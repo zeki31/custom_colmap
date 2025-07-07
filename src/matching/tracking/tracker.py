@@ -51,7 +51,7 @@ class Tracker:
             window_len=60,
         ).to(device)
 
-        start_t = i_proc * len(image_paths)
+        start_t = 0
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
                 end_t = start_t + self.cfg.window_len
@@ -83,8 +83,8 @@ class Tracker:
                 )
 
                 # # Save a video with predicted tracks
-                # from .submodules.cotracker.utils.visualizer import Visualizer
-                # vis = Visualizer(save_dir="results/tracking", pad_value=120, linewidth=1, fps=60)
+                # from src.submodules.cotracker.utils.visualizer import Visualizer
+                # vis = Visualizer(save_dir="results/tracking_aliked", pad_value=120, linewidth=1, fps=60)
                 # vis.visualize(
                 #     video,
                 #     pred_tracks,
@@ -98,7 +98,7 @@ class Tracker:
 
                 viz_mask = pred_visibility[0] > 0
                 for timestep in range(len(pred_tracks) - 1):
-                    frame_id = start_t + timestep
+                    frame_id = start_t + i_proc * len(image_paths) + timestep
 
                     # Generate new trajectories if needed
                     if start_t == 0 and timestep == 0:
@@ -115,13 +115,17 @@ class Tracker:
                             pred_tracks[timestep + 1][viz_mask],
                             frame_id + 1,
                             pred_visibility[timestep + 1][viz_mask],
-                            frames[-1],
+                            trajs.candidate_desc[viz_mask],
+                            image_paths[end_t - 1]
+                            if end_t < len(image_paths)
+                            else image_paths[-1],
                         )
                     else:
                         trajs.extend_all(
                             pred_tracks[timestep + 1][viz_mask],
                             frame_id + 1,
                             pred_visibility[timestep + 1][viz_mask],
+                            trajs.candidate_desc[viz_mask],
                         )
 
                 start_t += stride
