@@ -4,6 +4,7 @@ from typing import Literal
 
 import numpy as np
 import wandb
+from tqdm.contrib import tenumerate
 
 from src.colmap.database import COLMAPDatabase, image_ids_to_pair_id
 from src.colmap.h5_to_db import (
@@ -57,7 +58,7 @@ class COLMAPImporter:
         elif matching_type == "tracking":
             n_frames = len(image_paths)
             print(f"Importing {n_frames} frames into COLMAP database...")
-            for i, pth in enumerate(image_paths):
+            for i, pth in tenumerate(image_paths, desc="Importing images"):
                 if i % n_frames == 0:
                     camera_id = create_camera(db, pth, "simple-pinhole")
                 img_path = "/".join(pth.parts[-3:])
@@ -75,6 +76,28 @@ class COLMAPImporter:
                 # keypoints += 0.5  # COLMAP origin
 
                 db.add_keypoints(image_id, keypoints)
+                keypoint_f = h5py.File(os.path.join(h5_path, "keypoints.h5"), "r")
+
+                camera_id = None
+                fname_to_id = {}
+                for key in tqdm(list(keypoint_f.keys())):
+                    keypoints = keypoint_f[key][()]
+                    if "fixed" in key:
+                        continue  # skip fixed keypoints
+
+                    filename = key.replace("-", "/")
+                    path = image_path / filename
+                    if not path.is_file():
+                        raise IOError(f"Invalid image path {path}")
+
+                    if camera_id is None:
+                        camera_id = create_camera(db, path, camera_model)
+                    image_id = db.add_image(filename, camera_id)
+                    fname_to_id[key] = image_id
+
+                    db.add_keypoints(image_id, keypoints)
+
+                return fname_to_id
 
             print("Importing matches into the database...")
             added = set()

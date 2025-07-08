@@ -84,7 +84,7 @@ class Tracker:
 
                 # # Save a video with predicted tracks
                 # from src.submodules.cotracker.utils.visualizer import Visualizer
-                # vis = Visualizer(save_dir="results/tracking_aliked", pad_value=120, linewidth=1, fps=60)
+                # vis = Visualizer(save_dir=f"results/tracking_aliked_{i_proc}", pad_value=120, linewidth=1, fps=60)
                 # vis.visualize(
                 #     video,
                 #     pred_tracks,
@@ -96,7 +96,13 @@ class Tracker:
                 pred_tracks = pred_tracks[0].cpu().numpy()
                 pred_visibility = pred_visibility[0].cpu().numpy()
 
-                viz_mask = pred_visibility[0] > 0
+                valid_cond = (
+                    (pred_tracks[0][:, 0] > 0)
+                    & (pred_tracks[0][:, 0] < w - 1)
+                    & (pred_tracks[0][:, 1] > 0)
+                    & (pred_tracks[0][:, 1] < h - 1)
+                )
+                viz_mask = (pred_visibility[0] > 0) & valid_cond
                 for timestep in range(len(pred_tracks) - 1):
                     frame_id = start_t + i_proc * len(image_paths) + timestep
 
@@ -106,7 +112,19 @@ class Tracker:
                         times = (np.ones(points.shape[0]) * frame_id).astype(int)
                         trajs.new_traj_all(times, points)
 
-                    viz_mask = viz_mask & (pred_visibility[timestep] > 0)
+                    valid_cond = (
+                        (pred_tracks[timestep][:, 0] > 0)
+                        & (pred_tracks[timestep][:, 0] < w - 1)
+                        & (pred_tracks[timestep][:, 1] > 0)
+                        & (pred_tracks[timestep][:, 1] < h - 1)
+                    )
+                    viz_mask = viz_mask & (pred_visibility[timestep] > 0) & valid_cond
+                    valid_cond_next = (
+                        (pred_tracks[timestep + 1][viz_mask][:, 0] > 0)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 0] < w - 1)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 1] > 0)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 1] < h - 1)
+                    )
 
                     # Propagate all the trajectories
                     if timestep == len(pred_tracks) - 2:
@@ -114,7 +132,7 @@ class Tracker:
                         trajs.extend_all(
                             pred_tracks[timestep + 1][viz_mask],
                             frame_id + 1,
-                            pred_visibility[timestep + 1][viz_mask],
+                            pred_visibility[timestep + 1][viz_mask] & valid_cond_next,
                             trajs.candidate_desc[viz_mask],
                             image_paths[end_t - 1]
                             if end_t < len(image_paths)
@@ -124,7 +142,7 @@ class Tracker:
                         trajs.extend_all(
                             pred_tracks[timestep + 1][viz_mask],
                             frame_id + 1,
-                            pred_visibility[timestep + 1][viz_mask],
+                            pred_visibility[timestep + 1][viz_mask] & valid_cond_next,
                             trajs.candidate_desc[viz_mask],
                         )
 

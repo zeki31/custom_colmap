@@ -11,6 +11,16 @@ cmake --version
 cd ..
 sudo rm -rf cmake-3.28.5 cmake-3.28.5.tar.gz
 
+# point trajectory optimizer
+# set your customized python executable
+# PYTHON_EXECUTABLE=/media/shaoliu/anaconda/envs/particlesfm/bin/python
+PYTHON_EXECUTABLE=~/.venv/bin/python
+cd src/matching/tracking/optimize
+mkdir -p build && cd build
+cmake -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE} ..
+make -j
+cd ../../../../../
+
 # GLOMAP
 git clone git@github.com:colmap/glomap.git --recursive
 cd glomap

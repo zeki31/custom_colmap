@@ -187,25 +187,25 @@ class KeypointMatcher:
         n_cpu = min(mp.cpu_count(), 10)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
-        futures = []
-        with ProcessPoolExecutor() as executor:
-            for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
-                future = executor.submit(
-                    self._keypoint_distances_traj,
-                    sub_index_pairs,
-                    mask_imgs if self.cfg.mask else None,
-                    kpts_per_img,
-                    i_proc,
-                )
-                futures.append(future)
-                print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
-            result = [f.result() for f in futures]
-        # result = self._keypoint_distances_traj(
-        #     index_pairs,
-        #     mask_imgs if self.cfg.mask else None,
-        #     kpts_per_img,
-        #     0,
-        # )
+        # futures = []
+        # with ProcessPoolExecutor() as executor:
+        #     for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
+        #         future = executor.submit(
+        #             self._keypoint_distances_traj,
+        #             sub_index_pairs,
+        #             mask_imgs if self.cfg.mask else None,
+        #             kpts_per_img,
+        #             i_proc,
+        #         )
+        #         futures.append(future)
+        #         print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
+        #     result = [f.result() for f in futures]
+        result = self._keypoint_distances_traj(
+            index_pairs,
+            mask_imgs if self.cfg.mask else None,
+            kpts_per_img,
+            0,
+        )
 
         matched_traj_ids = defaultdict(dict)
         for sub_result in [result]:
@@ -246,18 +246,6 @@ class KeypointMatcher:
             descriptors1 = torch.from_numpy(desc1).to(device)
             descriptors2 = torch.from_numpy(desc2).to(device)
 
-            print(
-                max(keypoints1[:, 0]),
-                max(keypoints1[:, 1]),
-                min(keypoints1[:, 0]),
-                min(keypoints1[:, 1]),
-            )
-            print(
-                max(keypoints2[:, 0]),
-                max(keypoints2[:, 1]),
-                min(keypoints2[:, 0]),
-                min(keypoints2[:, 1]),
-            )
             with torch.inference_mode():
                 _, indices = _matcher(
                     descriptors1,
@@ -296,6 +284,7 @@ class KeypointMatcher:
                     (idx_in_traj_list1[indices[:, 0]] == 0)
                     & (idx_in_traj_list2[indices[:, 1]] == 0)
                 ]
+                # print(f"Filtered {len(indices)} matches after filtering by start.")
 
                 if len(indices) >= self.cfg.min_matches:
                     # Store the matched trajectory as:  dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)

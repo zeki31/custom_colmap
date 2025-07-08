@@ -12,13 +12,18 @@ from src.submodules.LightGlue.lightglue import ALIKED
 
 
 class Trajectory(object):
-    def __init__(self, start_time, start_xy, start_desc):
+    def __init__(
+        self,
+        start_time: int,
+        start_xy: Float[NDArray, "2"],
+        start_desc: Float[NDArray, "D"],
+    ):
         self.times = []
         self.xys = []
         self.descs = []
         self.extend(start_time, start_xy, start_desc)
 
-    def extend(self, time, xy, desc):
+    def extend(self, time: int, xy: Float[NDArray, "2"], desc: Float[NDArray, "D"]):
         self.times.append(time)
         self.xys.append(xy)
         self.descs.append(desc)
@@ -79,7 +84,7 @@ class IncrementalTrajectorySet(object):
 
     def generate_all_candidates(
         self, frame_path: Path
-    ) -> tuple[Float[NDArray, "1 N 2"], Float[NDArray, "N D"]]:
+    ) -> tuple[Float[NDArray, "N 2"], Float[NDArray, "N D"]]:
         # # Grid sampling of the image
         # x, y = np.arange(0, self.w), np.arange(0, self.h)
         # xx, yy = np.meshgrid(x, y)
@@ -91,16 +96,23 @@ class IncrementalTrajectorySet(object):
                 self.dtype
             )
             features = self.extractor.extract(image)
-        kpts = features["keypoints"].detach().cpu().numpy()  # shape: (N, 2)
-        descs = (
-            features["descriptors"].detach().cpu().numpy().squeeze(0)
-        )  # shape: (N, D)
+        kpts = features["keypoints"].detach().cpu().numpy().squeeze(0)  # shape: (N, 2)
+        valid_cond = (
+            (kpts[:, 0] > 0)
+            & (kpts[:, 0] < self.w - 1)
+            & (kpts[:, 1] > 0)
+            & (kpts[:, 1] < self.h - 1)
+        )
+        kpts = kpts[valid_cond]  # shape: (N_valid, 2)
+        descs = (features["descriptors"].detach().cpu().numpy().squeeze(0))[
+            valid_cond
+        ]  # shape: (N_valid, D)
         return kpts, descs
 
     def new_traj_all(self, start_times, start_xys, start_desc=None):
         start_desc = start_desc if start_desc is not None else self.candidate_desc
         for time, xy, desc in zip(start_times, start_xys, start_desc):
-            t = Trajectory(time, xy, desc)
+            t = Trajectory(int(time), xy, desc)
             self.active_trajs.append(t)
 
     def get_cur_pos(
@@ -122,6 +134,7 @@ class IncrementalTrajectorySet(object):
         next_descs: Float[NDArray, "N D"],
         frame_path: Path = None,
     ):
+        # print(f"Extending {len(self.active_trajs)} active trajectories with {len(next_xys)} new points at time {next_time}.")
         # Extend all the trajs
         assert len(next_xys) == len(
             self.active_trajs
@@ -138,7 +151,7 @@ class IncrementalTrajectorySet(object):
             if not flag:
                 self.full_trajs.append(self.active_trajs[i])
             else:
-                occupied_map[int(next_xy[1]) - 1, int(next_xy[0]) - 1] = 1
+                occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
                 self.active_trajs[i].extend(next_time, next_xy, next_desc)
                 new_active_trajs.append(self.active_trajs[i])
 
@@ -158,11 +171,10 @@ class IncrementalTrajectorySet(object):
         # Get current active query points
         active_pts, active_pts_desc = self.get_cur_pos()  # shape: (N_active, 2)
         # Sample the candidates that are not occupied
-        extracted_pts = extracted_pts.squeeze(0)  # shape: (N, 2)
         xs = extracted_pts[:, 0].astype(int)
         ys = extracted_pts[:, 1].astype(int)
         # If occupied_map_trans has shape (H, W, 1), squeeze the last dimension
-        distances = occupied_map_trans[ys - 1, xs - 1].squeeze()  # shape: (N,)
+        distances = occupied_map_trans[ys, xs].squeeze()  # shape: (N,)
         sample_map = distances > self.ratio
         non_active_candidates = extracted_pts[sample_map]
         non_active_candidates_desc = extracted_descs[sample_map]
@@ -218,6 +230,7 @@ class TrajectorySet:
         return output
 
     def build_invert_indexes(self):
+        """Build invert_maps: frame_id -> {traj_id -> index}"""
         for traj_id, traj in tqdm(self.trajs.items(), desc="Building invert indexes"):
             for i in range(traj.length()):
                 frame_id = traj.times[i]

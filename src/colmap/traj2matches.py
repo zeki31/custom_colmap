@@ -18,27 +18,65 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from jaxtyping import Float
+from numpy.typing import NDArray
 from tqdm import tqdm
+
+from src.matching.tracking.trajectory import Trajectory
+
+
+class TrajsConverter:
+    def __init__(
+        self,
+        n_frames: int,
+    ):
+        self.n_frames = n_frames
+        self.image_datas = [imageMatchData(i) for i in range(self.n_frames * 4)]
+
+    def to_matches(self, trajs: dict[int, Trajectory], mask_imgs: list[NDArray[Float]]):
+        for traj in tqdm(trajs.values(), desc="Processing trajectories"):
+            locations, frame_ids = np.array(traj.xys), np.array(traj.times)
+            assert locations.shape[0] == frame_ids.shape[0]
+
+            # Obtain all the keypoint ids in each image
+            img_ids, kp_inds = [], []
+            for location, img_id in zip(locations, frame_ids):
+                mx, my = location
+
+                if mask_imgs[img_id][int(my), int(mx)]:
+                    continue
+
+                mx, my, img_id = float(mx), float(my), int(img_id)
+                if img_id < self.n_frames // 4:
+                    img_id = 0
+                self.image_datas[img_id].insert_keypoint([mx, my])
+                ind = len(self.image_datas[img_id].keypoints) - 1
+                kp_inds.append(ind)
+                img_ids.append(img_id)
+
+            for j in range(len(img_ids)):
+                for k in range(len(img_ids)):
+                    if k == j:
+                        continue
+                    self.image_datas[img_ids[j]].insert_match(
+                        img_ids[k], kp_inds[j], kp_inds[k]
+                    )
 
 
 class imageMatchData:
     def __init__(self, image_id: int):
         self.image_id = image_id
-        self.keypoints = set()
+        self.keypoints = []
         self.match_pairs = {}
-
-    def insert_keypoint(self, kp1):
-        # kp1: [x,y]
-        self.keypoints.add(kp1)
 
     def insert_match(self, tgt_img_id, kp_ind1, kp_ind2):
         # kp_ind1: the keypoint index in current image
         # kp_ind2: the keypoint index in target matched image (refered by tgt_img_id)
         match_key = str(self.image_id) + "-" + str(tgt_img_id)
         if match_key in self.match_pairs.keys():
-            self.match_pairs[match_key].add((kp_ind1, kp_ind2))
+            self.match_pairs[match_key].append([kp_ind1, kp_ind2])
         else:
-            self.match_pairs[match_key] = set(((kp_ind1, kp_ind2),))
+            self.match_pairs[match_key] = [[kp_ind1, kp_ind2]]
 
     def rename_matches(self, image_names: list[Path]):
         # rename the matching pairs, replace the sorted id to image names
@@ -77,31 +115,7 @@ def traj_to_matches(image_paths: list[Path], feature_dir: Path):
         cv2.imread(mask_dir / pth.name, cv2.IMREAD_GRAYSCALE) for pth in image_paths
     ]
 
-    for traj in tqdm(trajectories.values(), desc="Processing trajectories"):
-        locations, frame_ids = np.array(traj["locations"]), np.array(traj["frame_ids"])
-        assert locations.shape[0] == frame_ids.shape[0]
-
-        # Obtain all the keypoint ids in each image
-        img_ids, kp_inds = [], []
-        for location, img_id in zip(locations, frame_ids):
-            mx, my = location
-
-            if mask_imgs[img_id][int(my), int(mx)]:
-                continue
-
-            mx, my, img_id = float(mx), float(my), int(img_id)
-            if img_id < len(image_paths) // 4:
-                img_id = 0
-            image_datas[img_id].insert_keypoint([mx, my])
-            ind = len(image_datas[img_id].keypoints) - 1
-            kp_inds.append(ind)
-            img_ids.append(img_id)
-
-        for j in range(len(img_ids)):
-            for k in range(len(img_ids)):
-                if k == j:
-                    continue
-                image_datas[img_ids[j]].insert_match(img_ids[k], kp_inds[j], kp_inds[k])
+    image_datas = TrajsConverter()
 
     # Read the images and project the trajectory-based image-id to image name
     # The colmap does not necessarily follow the sorted image name as ids

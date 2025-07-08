@@ -9,6 +9,7 @@ from pathlib import Path
 from time import time
 from typing import Literal
 
+import h5py
 import numpy as np
 import torch
 import wandb
@@ -84,6 +85,8 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         #     print(f"Processing chunk {i_proc + 1}/4: {cam_name}")
         #     self.tracker.track(sub_image_paths, sub_feature_dir, i_proc)
 
+        torch.cuda.empty_cache()
+
         lap_tracking = time()
         print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
 
@@ -98,37 +101,41 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             dict_trajs.update(trajs)
         trajectories = TrajectorySet(dict_trajs)
 
-        trajectories.build_invert_indexes()
+        with h5py.File(feature_dir / "keypoints.h5", mode="w") as f_keypoints:
+            # Get keypoints for each image from trajectories
+            trajectories.build_invert_indexes()
+            keypoints_per_image = {}
+            for frame_id in trajectories.invert_maps:
+                key = "-".join(image_paths[frame_id].parts[-3:])
+                kp_list = []
+                desc_list = []
+                traj_list = []
+                idx_in_traj_list = []
+                for traj_id, idx_in_traj in trajectories.invert_maps[frame_id].items():
+                    traj = trajectories.trajs[traj_id]
+                    kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
+                    desc = traj.descs[idx_in_traj]
+                    kp_list.append(kp)
+                    desc_list.append(desc)
+                    traj_list.append(traj_id)
+                    idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
+                keypoints_per_image[int(frame_id)] = (
+                    np.array(kp_list),
+                    np.array(desc_list),
+                    np.array(traj_list, dtype=int),
+                    np.array(idx_in_traj_list, dtype=int),
+                )
+                f_keypoints[key] = np.array(kp_list)
 
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "exhaustive_keyframe", self.cfg.tracker.window_len
         )
-        # Get keypoints for each image from trajectories
-        keypoints_per_image = {}
-        for frame_id in trajectories.invert_maps:
-            kp_list = []
-            desc_list = []
-            traj_list = []
-            idx_in_traj_list = []
-            for traj_id, idx_in_traj in trajectories.invert_maps[frame_id].items():
-                traj = trajectories.trajs[traj_id]
-                kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
-                desc = traj.descs[idx_in_traj]
-                kp_list.append(kp)
-                desc_list.append(desc)
-                traj_list.append(traj_id)
-                idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
-            keypoints_per_image[int(frame_id)] = (
-                np.array(kp_list),
-                np.array(desc_list),
-                np.array(traj_list, dtype=int),
-                np.array(idx_in_traj_list, dtype=int),
-            )
-
         # Match trajectories for each pair: dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
         matched_traj_ids = self.matcher.match_keypoints_traj(
             image_paths, keypoints_per_image, index_pairs
         )
+
+        torch.cuda.empty_cache()
 
         # Propagate matches to trajectories
         for frame_i in tqdm(matched_traj_ids):
@@ -136,7 +143,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 traj_pairs = matched_traj_ids[frame_i][
                     frame_j
                 ]  # List of (traj_id_i, traj_id_j)
-                for traj_id_i, traj_id_j in traj_pairs:
+                for traj_id_i, traj_id_j in zip(traj_pairs[0], traj_pairs[1]):
                     traj_j = trajectories.trajs[traj_id_j]
                     # Append data from traj_j to traj_i
                     trajectories.trajs[traj_id_i].times.extend(traj_j.times)
