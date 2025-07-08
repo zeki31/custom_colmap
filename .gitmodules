@@ -1,3 +1,9 @@
 [submodule "src/submodules/LightGlue"]
 	path = src/submodules/LightGlue
 	url = https://github.com/cvg/LightGlue
+[submodule "src/matching/tracking/optimize/third_party/pybind11"]
+	path = src/matching/tracking/optimize/third_party/pybind11
+	url = https://github.com/pybind/pybind11.git
+[submodule "src/matching/tracking/optimize/third_party/HighFive"]
+	path = src/matching/tracking/optimize/third_party/HighFive
+	url = https://github.com/BlueBrain/HighFive.git
