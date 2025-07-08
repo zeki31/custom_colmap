@@ -22,18 +22,15 @@
 namespace py = pybind11;
 
 #include "trajectory_base.h"
-#include "trajectory_optimize.h"
 
 PYBIND11_MODULE(particlesfm, m){
     using namespace particlesfm;
     m.doc() = "pybind11 for point trajectories";
 
-    m.def("optimize_location", &optimize_location);
-
     py::class_<Trajectory>(m, "Trajectory")
-        .def(py::init<int, V2D, int>(), py::arg("time"), py::arg("point"), py::kw_only(), py::arg("buffer_size") = 0)
-        .def(py::init<double, V2D, int>(), py::arg("time"), py::arg("point"), py::kw_only(), py::arg("buffer_size") = 0)
-        .def(py::init<const std::vector<int>&, const std::vector<V2D>&, const std::vector<bool>&>(), py::arg("times"), py::arg("xys"), py::kw_only(), py::arg("labels") = std::vector<bool>())
+        .def(py::init<int, V2D, VXD>(), py::arg("time"), py::arg("point"), py::arg("desc"))
+        .def(py::init<double, V2D, VXD>(), py::arg("time"), py::arg("point"), py::arg("desc"))
+        .def(py::init<const std::vector<int>&, const std::vector<V2D>&, const std::vector<VXD>&>(), py::arg("times"), py::arg("xys"), py::arg("descs"))
         .def(py::init<py::dict>())
         .def("as_dict", &Trajectory::as_dict)
         .def(py::pickle(
@@ -45,14 +42,9 @@ PYBIND11_MODULE(particlesfm, m){
             }
         ))
         .def_readonly("times", &Trajectory::times)
-        .def_readonly("labels", &Trajectory::labels)
         .def_readonly("xys", &Trajectory::xys)
-        .def_readonly("buffer_xys", &Trajectory::buffer_xys)
+        .def_readonly("descs", &Trajectory::descs)
         .def("extend", &Trajectory::extend)
-        .def("clear_buffer", &Trajectory::clear_buffer)
-        .def("set_buffer_xy", &Trajectory::set_buffer_xy)
-        .def("set_label", &Trajectory::set_label)
-        .def("set_labels", &Trajectory::set_labels)
         .def("length", &Trajectory::length)
         .def("get_tail_location", &Trajectory::get_tail_location);
 
@@ -70,8 +62,7 @@ PYBIND11_MODULE(particlesfm, m){
             }
         ))
         .def_readonly("trajs", &TrajectorySet::trajs)
-        .def("insert", &TrajectorySet::insert)
         .def("build_invert_indexes", &TrajectorySet::build_invert_indexes)
-        .def("sample_inside_window", &TrajectorySet::sample_inside_window, py::arg("frame_ids"), py::arg("min_length") = 3, py::arg("max_num_tracks") = 100000);
+        .def_readonly("invert_maps", &TrajectorySet::invert_maps);
 
 }

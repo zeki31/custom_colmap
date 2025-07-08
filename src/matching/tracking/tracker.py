@@ -7,7 +7,8 @@ import torch
 import wandb
 from tqdm import tqdm
 
-from src.matching.tracking.trajectory import IncrementalTrajectorySet, TrajectorySet
+from src.matching.tracking.optimize.build import particlesfm
+from src.matching.tracking.trajectory import IncrementalTrajectorySet
 from src.submodules.cotracker.predictor import CoTrackerPredictor
 
 
@@ -159,5 +160,5 @@ class Tracker:
             if traj.length() < self.cfg.traj_min_len:
                 continue
             dict_trajs[idx + start_t] = traj
-        trajectories = TrajectorySet(dict_trajs)
+        trajectories = particlesfm.TrajectorySet(dict_trajs)
         np.save(feature_dir / "track.npy", trajectories)

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import h5py
 import kornia as K
 import numpy as np
 import scipy
@@ -237,3 +238,40 @@ class TrajectorySet:
                 if frame_id not in self.invert_maps:
                     self.invert_maps[frame_id] = {}
                 self.invert_maps[frame_id][traj_id] = i
+
+    def build_match_indexes(
+        self,
+        feature_dir: Path,
+        mask_imgs: list[torch.Tensor],
+        kpts_indices: dict[dict[int]],
+        i_proc: int,
+    ):
+        """Save matches in a h5 file for each image."""
+        with h5py.File((feature_dir / f"matches_{i_proc}.h5"), mode="w") as f_matches:
+            for idx1, trajs_dict in tqdm(
+                self.invert_maps.items(), desc="Building match indexes"
+            ):
+                kpts_indices_idx1 = kpts_indices[idx1]
+                matches_dict = {}
+                for traj_id, traj in trajs_dict.items():
+                    kpts_indices_idx1_traj_id = kpts_indices_idx1[traj_id]
+                    if mask_imgs[idx1][traj.xys[0]] > 0:
+                        continue
+
+                    for idx2 in traj.times:
+                        if idx1 == idx2:
+                            continue
+                        if idx2 not in matches_dict:
+                            matches_dict[idx2] = []
+                        matches_dict[idx2].append(
+                            (kpts_indices_idx1_traj_id, kpts_indices[idx2][traj_id])
+                        )
+
+                for idx2, matches in matches_dict.items():
+                    # Store the matches in the group of one image
+                    if len(matches) >= 15:
+                        group = f_matches.require_group(idx1)
+                        group.create_dataset(
+                            idx2, data=np.array(matches)
+                        )
+

@@ -31,32 +31,27 @@ namespace py = pybind11;
 namespace particlesfm {
 
 using V2D = Eigen::Vector2d;
+using VXD = Eigen::VectorXd;
 
 class Trajectory {
 public:
     Trajectory() {}
-    Trajectory(int time, V2D xy, int buffer_size = 0);
-    Trajectory(double time, V2D xy, int buffer_size = 0): Trajectory(int(time), xy, buffer_size) {};
-    Trajectory(const std::vector<int>& times, const std::vector<V2D>& xys, const std::vector<bool>& labels=std::vector<bool>());
+    Trajectory(int time, V2D xy, VXD desc);
+    Trajectory(double time, V2D xy, VXD desc): Trajectory(int(time), xy, desc) {};
+    Trajectory(const std::vector<int>& times, const std::vector<V2D>& xys, const std::vector<VXD>& descs);
     Trajectory(py::dict dict);
     py::dict as_dict() const;
 
     std::vector<int> times;
-    std::vector<bool> labels;
     std::vector<V2D> xys;
-    std::deque<V2D> buffer_xys;
+    std::vector<VXD> descs;
 
-    void extend(int time, V2D xy);
-    void clear_buffer();
-    void set_buffer_xy(int index, V2D xy);
-    void set_label(int index, bool label) { labels[index] = label; }
-    void set_labels(const std::vector<bool>& input_labels) { labels = input_labels; }
-
+    void extend(int time, V2D xy, VXD desc);
     int length() const;
     V2D get_tail_location() const;
 
-private:
-    int buffer_size = 0;
+// private:
+//     int buffer_size = 0;
 };
 
 class TrajectorySet {
@@ -67,13 +62,9 @@ public:
     std::map<int, py::dict> as_dict() const;
 
     std::map<int, Trajectory> trajs;
-
-    void insert(int traj_id, Trajectory traj);
-    void build_invert_indexes();
-    py::dict sample_inside_window(const std::vector<int>& frame_ids, int min_length = 3, int max_num_tracks = 100000) const;
-
-private:
     std::map<int, std::map<int, size_t>> invert_maps; // key: frame_id, value: set of trajectory ids and the corresponding indexes of frame_id
+
+    void build_invert_indexes();
 };
 
 }  // namespace particlesfm
