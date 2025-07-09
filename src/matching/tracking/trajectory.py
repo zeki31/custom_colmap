@@ -9,6 +9,7 @@ from jaxtyping import Bool, Float
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+from src.colmap.database import image_ids_to_pair_id
 from src.submodules.LightGlue.lightglue import ALIKED
 
 
@@ -17,14 +18,14 @@ class Trajectory(object):
         self,
         start_time: int,
         start_xy: Float[NDArray, "2"],
-        start_desc: Float[NDArray, "D"],
+        start_desc: Float[NDArray, " D"],
     ):
         self.times = []
         self.xys = []
         self.descs = []
         self.extend(start_time, start_xy, start_desc)
 
-    def extend(self, time: int, xy: Float[NDArray, "2"], desc: Float[NDArray, "D"]):
+    def extend(self, time: int, xy: Float[NDArray, "2"], desc: Float[NDArray, " D"]):
         self.times.append(time)
         self.xys.append(xy)
         self.descs.append(desc)
@@ -131,7 +132,7 @@ class IncrementalTrajectorySet(object):
         self,
         next_xys: Float[NDArray, "N 2"],
         next_time: int,
-        flags: Bool[NDArray, "N"],
+        flags: Bool[NDArray, " N"],
         next_descs: Float[NDArray, "N D"],
         frame_path: Path = None,
     ):
@@ -219,7 +220,6 @@ class TrajectorySet:
 
     def __init__(self, trajs: dict[int, Trajectory]):
         self.trajs = trajs
-        self.invert_maps = {}
 
     def as_dict(self):
         """
@@ -232,6 +232,7 @@ class TrajectorySet:
 
     def build_invert_indexes(self):
         """Build invert_maps: frame_id -> {traj_id -> index}"""
+        self.invert_maps = {}
         for traj_id, traj in tqdm(self.trajs.items(), desc="Building invert indexes"):
             for i in range(traj.length()):
                 frame_id = traj.times[i]
@@ -242,20 +243,24 @@ class TrajectorySet:
     def build_match_indexes(
         self,
         feature_dir: Path,
-        mask_imgs: list[torch.Tensor],
-        kpts_indices: dict[dict[int]],
+        mask_imgs: list[NDArray],
+        kpts_indices: dict[int, dict[int, int]],
+        n_frames: int,
         i_proc: int,
     ):
         """Save matches in a h5 file for each image."""
         with h5py.File((feature_dir / f"matches_{i_proc}.h5"), mode="w") as f_matches:
+            added = set()
             for idx1, trajs_dict in tqdm(
                 self.invert_maps.items(), desc="Building match indexes"
             ):
                 kpts_indices_idx1 = kpts_indices[idx1]
                 matches_dict = {}
-                for traj_id, traj in trajs_dict.items():
+                for traj_id in sorted(trajs_dict):
+                    traj = self.trajs[traj_id]
                     kpts_indices_idx1_traj_id = kpts_indices_idx1[traj_id]
-                    if mask_imgs[idx1][traj.xys[0]] > 0:
+                    y, x = traj.xys[0].astype(int)
+                    if mask_imgs[idx1][x, y] > 0:
                         continue
 
                     for idx2 in traj.times:
@@ -269,9 +274,16 @@ class TrajectorySet:
 
                 for idx2, matches in matches_dict.items():
                     # Store the matches in the group of one image
-                    if len(matches) >= 15:
-                        group = f_matches.require_group(idx1)
-                        group.create_dataset(
-                            idx2, data=np.array(matches)
-                        )
+                    if len(matches) < 15:
+                        continue
 
+                    # idx1 = idx1 if idx1 < n_frames else 0
+                    pair_id = image_ids_to_pair_id(idx1, idx2)
+                    if pair_id in added:
+                        print(
+                            f"Warning: Duplicate matches for {idx1} and {idx2}. Skipping."
+                        )
+                        continue
+                    group = f_matches.require_group(str(idx1))
+                    group.create_dataset(str(idx2), data=np.array(matches))
+                    added.add(pair_id)

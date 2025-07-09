@@ -1,7 +1,4 @@
 import multiprocessing as mp
-
-mp.set_start_method("spawn", force=True)
-
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -16,6 +13,8 @@ import wandb
 from jaxtyping import Float, Int
 from numpy.typing import NDArray
 from tqdm import tqdm
+
+mp.set_start_method("spawn", force=True)
 
 
 @dataclass
@@ -60,7 +59,7 @@ class KeypointMatcher:
 
         Stores output at feature_dir/matches.h5
         """
-        if (feature_dir / "matches.h5").exists():
+        if (feature_dir / "matches_0.h5").exists():
             return
 
         mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
@@ -184,31 +183,31 @@ class KeypointMatcher:
                 for path in paths
             ]
 
-        n_cpu = min(mp.cpu_count(), 10)
+        n_cpu = min(mp.cpu_count(), 4)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
-        # futures = []
-        # with ProcessPoolExecutor() as executor:
-        #     for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
-        #         future = executor.submit(
-        #             self._keypoint_distances_traj,
-        #             sub_index_pairs,
-        #             mask_imgs if self.cfg.mask else None,
-        #             kpts_per_img,
-        #             i_proc,
-        #         )
-        #         futures.append(future)
-        #         print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
-        #     result = [f.result() for f in futures]
-        result = self._keypoint_distances_traj(
-            index_pairs,
-            mask_imgs if self.cfg.mask else None,
-            kpts_per_img,
-            0,
-        )
+        futures = []
+        with ProcessPoolExecutor() as executor:
+            for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
+                future = executor.submit(
+                    self._keypoint_distances_traj,
+                    sub_index_pairs,
+                    mask_imgs if self.cfg.mask else None,
+                    kpts_per_img,
+                    i_proc,
+                )
+                futures.append(future)
+                print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
+            result = [f.result() for f in futures]
+        # result = self._keypoint_distances_traj(
+        #     index_pairs,
+        #     mask_imgs if self.cfg.mask else None,
+        #     kpts_per_img,
+        #     0,
+        # )
 
         matched_traj_ids = defaultdict(dict)
-        for sub_result in [result]:
+        for sub_result in result:
             matched_traj_ids.update(sub_result)
         return matched_traj_ids
 
@@ -282,7 +281,7 @@ class KeypointMatcher:
                 indices = indices.detach().cpu().numpy().astype(int)
                 indices = indices[
                     (idx_in_traj_list1[indices[:, 0]] == 0)
-                    & (idx_in_traj_list2[indices[:, 1]] == 0)
+                    # & (idx_in_traj_list2[indices[:, 1]] == 0)
                 ]
                 # print(f"Filtered {len(indices)} matches after filtering by start.")
 

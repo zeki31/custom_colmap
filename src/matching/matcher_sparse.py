@@ -42,18 +42,16 @@ class MatcherSparse(Matcher):
         index_pairs = self.retriever.get_index_pairs(
             image_paths, self.cfg.pair_generator
         )
-        self.matcher.match_keypoints(
-            image_paths, (feature_dir / "matches.h5"), index_pairs
-        )
+        self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
         lap = time()
 
         print(f"Matching completed in {(lap - start) // 60} minutes.")
         self.logger.log({"matching_time": (lap - start) // 60})
 
-        index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
-        self.matcher.match_keypoints(
-            image_paths, (feature_dir / "matches_fixed.h5"), index_pairs_fixed
-        )
+        # index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
+        # self.matcher.match_keypoints(
+        #     image_paths, (feature_dir / "matches_fixed.h5"), index_pairs_fixed
+        # )
 
         print(f"Matching with fixed pairs completed in {(time() - lap) // 60} minutes.")
         self.logger.log({"matching_fixed_time": (time() - lap) // 60})

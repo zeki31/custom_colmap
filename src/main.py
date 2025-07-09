@@ -61,7 +61,7 @@ def main():
             database_path, feature_dir, image_paths, cfg.matcher.name, cfg.base_dir
         )
 
-        mapper = Mapper(cfg.mapper, logger, device)
+        mapper = Mapper(cfg.mapper, logger)
         mapper.map(
             database_path,
             cfg.base_dir,

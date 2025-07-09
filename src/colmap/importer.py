@@ -1,19 +1,13 @@
-import warnings
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
+import h5py
 import wandb
+from tqdm import tqdm
 from tqdm.contrib import tenumerate
 
-from src.colmap.database import COLMAPDatabase, image_ids_to_pair_id
-from src.colmap.h5_to_db import (
-    add_fixed_kpts_matches,
-    add_keypoints,
-    add_matches,
-    create_camera,
-)
-from src.colmap.traj2matches import traj_to_matches
+from src.colmap.database import COLMAPDatabase
+from src.colmap.h5_to_db import add_keypoints, add_matches, create_camera
 
 
 class COLMAPImporter:
@@ -39,81 +33,44 @@ class COLMAPImporter:
             fname_to_id = add_keypoints(db, feature_dir, base_dir, "simple-pinhole")
             added = set()
             for match_file in feature_dir.glob("matches_*.h5"):
-                if "fixed" in match_file.name:
-                    continue
                 added = add_matches(
                     db,
                     match_file,
                     fname_to_id,
                     added,
                 )
-            add_fixed_kpts_matches(
-                db,
-                (feature_dir / "matches_fixed.h5"),
-                fname_to_id,
-                image_paths[0],
-                "simple-pinhole",
-            )
 
         elif matching_type == "tracking":
-            n_frames = len(image_paths)
-            print(f"Importing {n_frames} frames into COLMAP database...")
+            n_frames = len(image_paths) // 4
+            print(f"Importing {n_frames * 4} frames into COLMAP database...")
+            fname_to_id = {}
             for i, pth in tenumerate(image_paths, desc="Importing images"):
+                # if i < n_frames:
+                #     continue
                 if i % n_frames == 0:
                     camera_id = create_camera(db, pth, "simple-pinhole")
                 img_path = "/".join(pth.parts[-3:])
-                db.add_image(name=img_path, camera_id=camera_id)
+                image_id = db.add_image(name=img_path, camera_id=camera_id)
+                fname_to_id[str(i)] = image_id
+            # camera_id = create_camera(db, image_paths[0], "simple-pinhole")
+            # image_id = db.add_image(name="/".join(image_paths[0].parts[-3:]), camera_id=camera_id)
+            # fname_to_id["0"] = image_id
 
-            colmap_feat_match_data = traj_to_matches(image_paths, feature_dir)
-
-            image_ids = {}
-            for name, image_id in db.execute("SELECT name, image_id FROM images;"):
-                image_ids[name] = image_id
+            keypoint_f = h5py.File((feature_dir / "keypoints.h5"), "r")
 
             print("Importing keypoints into the database...")
-            for image_name, image_id in image_ids.items():
-                keypoints = np.array(colmap_feat_match_data[image_name].keypoints)
-                # keypoints += 0.5  # COLMAP origin
-
-                db.add_keypoints(image_id, keypoints)
-                keypoint_f = h5py.File(os.path.join(h5_path, "keypoints.h5"), "r")
-
-                camera_id = None
-                fname_to_id = {}
-                for key in tqdm(list(keypoint_f.keys())):
-                    keypoints = keypoint_f[key][()]
-                    if "fixed" in key:
-                        continue  # skip fixed keypoints
-
-                    filename = key.replace("-", "/")
-                    path = image_path / filename
-                    if not path.is_file():
-                        raise IOError(f"Invalid image path {path}")
-
-                    if camera_id is None:
-                        camera_id = create_camera(db, path, camera_model)
-                    image_id = db.add_image(filename, camera_id)
-                    fname_to_id[key] = image_id
-
-                    db.add_keypoints(image_id, keypoints)
-
-                return fname_to_id
+            for key in tqdm(list(keypoint_f.keys())):
+                keypoints = keypoint_f[key][()]
+                db.add_keypoints(fname_to_id[key], keypoints)
 
             print("Importing matches into the database...")
             added = set()
-            for image_name, image_id in image_ids.items():
-                matches = colmap_feat_match_data[image_name].match_pairs
-                for pair, match in matches.items():
-                    # get the image name and then id
-                    name_1, name_2 = pair.split("-")
-                    id_1, id_2 = image_ids[name_1], image_ids[name_2]
-
-                    pair_id = image_ids_to_pair_id(id_1, id_2)
-                    if pair_id in added:
-                        warnings.warn(f"Pair ({name_1}, {name_2}) already added!")
-                        continue
-                    added.add(pair_id)
-
-                    db.add_matches(id_1, id_2, np.array(match))
+            for match_file in feature_dir.glob("matches_*.h5"):
+                added = add_matches(
+                    db,
+                    match_file,
+                    fname_to_id,
+                    added,
+                )
 
         db.commit()

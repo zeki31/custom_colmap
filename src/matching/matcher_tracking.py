@@ -1,7 +1,5 @@
+import gc
 import multiprocessing as mp
-
-mp.set_start_method("spawn", force=True)
-
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -9,19 +7,22 @@ from pathlib import Path
 from time import time
 from typing import Literal
 
+import cv2
 import h5py
 import numpy as np
 import torch
 import wandb
 from tqdm import tqdm
-import cv2
+
 from src.matching.matcher import Matcher
 from src.matching.retriever import Retriever
 from src.matching.sparse.keypoint_detector import KeypointDetector, KeypointDetectorCfg
 from src.matching.sparse.keypoint_matcher import KeypointMatcher, KeypointMatcherCfg
 from src.matching.tracking.tracker import Tracker, TrackerCfg
 from src.matching.tracking.trajectory import TrajectorySet
-import gc
+
+mp.set_start_method("spawn", force=True)
+
 
 @dataclass
 class MatcherTrackingCfg:
@@ -46,7 +47,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger)
 
     def match(self, image_paths: list[Path], feature_dir: Path) -> None:
-        if (feature_dir / "matches_0.npy").exists():
+        if (feature_dir / "matches_0.h5").exists():
             print("Matching already done, skipping.")
             return
 
@@ -74,7 +75,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 futures.append(future)
                 print(f"Chunk {i_proc + 1}/4 submitted.")
 
-            result = [f.result() for f in futures]
+            _ = [f.result() for f in futures]
 
         # for i_proc, cam_name in enumerate(["1_fixed", "2_dynA", "3_dynB", "4_dynC"]):
         #     sub_feature_dir = feature_dir / cam_name
@@ -108,38 +109,32 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                     .trajs
                 )
                 dict_trajs.update(trajs)
+            np.save(merged_track_path, dict_trajs, allow_pickle=True)
         trajectories = TrajectorySet(dict_trajs)
 
-        with h5py.File(feature_dir / "keypoints.h5", mode="w") as f_keypoints:
-            # Get keypoints for each image from trajectories
-            trajectories.build_invert_indexes()
-            keypoints_per_image = {}
-            kpts_indices = {}
-            for frame_id, trajs_dict in trajectories.invert_maps.items():
-                key = "-".join(image_paths[frame_id].parts[-3:])
-                kp_list = []
-                desc_list = []
-                traj_list = []
-                idx_in_traj_list = []
-                kpts_indices_map = {}
-                # NOTE: Make sure invert_maps[frame_id] are sorted by traj_id
-                for traj_id, idx_in_traj in sorted(trajs_dict[frame_id].items()):
-                    traj = trajectories.trajs[traj_id]
-                    kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
-                    desc = traj.descs[idx_in_traj]
-                    kp_list.append(kp)
-                    desc_list.append(desc)
-                    traj_list.append(traj_id)
-                    idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
-                    kpts_indices_map[traj_id] = len(kp_list) - 1
-                keypoints_per_image[int(frame_id)] = (
-                    np.array(kp_list),
-                    np.array(desc_list),
-                    np.array(traj_list, dtype=int),
-                    np.array(idx_in_traj_list, dtype=int),
-                )
-                kpts_indices[int(frame_id)] = kpts_indices_map
-                f_keypoints[key] = np.array(kp_list)
+        # Get keypoints for each image from trajectories
+        trajectories.build_invert_indexes()
+        keypoints_per_image = {}
+        for frame_id, trajs_dict in trajectories.invert_maps.items():
+            kp_list = []
+            desc_list = []
+            traj_list = []
+            idx_in_traj_list = []
+            # NOTE: Make sure invert_maps[frame_id] are sorted by traj_id
+            for traj_id, idx_in_traj in sorted(trajs_dict.items()):
+                traj = trajectories.trajs[traj_id]
+                kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
+                desc = traj.descs[idx_in_traj]
+                kp_list.append(kp)
+                desc_list.append(desc)
+                traj_list.append(traj_id)
+                idx_in_traj_list.append(idx_in_traj)  # Store index in trajectory
+            keypoints_per_image[int(frame_id)] = (
+                np.array(kp_list),
+                np.array(desc_list),
+                np.array(traj_list, dtype=int),
+                np.array(idx_in_traj_list, dtype=int),
+            )
 
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "exhaustive_keyframe", self.cfg.tracker.window_len
@@ -165,13 +160,30 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                     trajectories.trajs[traj_id_i].xys.extend(traj_j.xys)
                     # trajectories.trajs[traj_id_i].descs.extend(traj_j.descs)
 
+        with h5py.File(feature_dir / "keypoints.h5", mode="w") as f_keypoints:
+            # Get keypoints for each image from trajectories
+            trajectories.build_invert_indexes()
+            kpts_indices = {}
+            for frame_id, trajs_dict in trajectories.invert_maps.items():
+                # key = "-".join(image_paths[frame_id].parts[-3:])
+                kp_list = []
+                kpts_indices_map = {}
+                # NOTE: Make sure invert_maps[frame_id] are sorted by traj_id
+                for traj_id, idx_in_traj in sorted(trajs_dict.items()):
+                    traj = trajectories.trajs[traj_id]
+                    kp = traj.xys[idx_in_traj]  # (x, y) location at this frame
+                    kp_list.append(kp + 0.5)
+                    kpts_indices_map[traj_id] = len(kp_list) - 1
+                kpts_indices[int(frame_id)] = kpts_indices_map
+                f_keypoints[str(frame_id)] = np.array(kp_list)
+
         trajectories.build_invert_indexes()
         mask_dir = Path(str(image_paths[0].parent).replace("images", "masks"))
         mask_imgs = [
             cv2.imread(mask_dir / pth.name, cv2.IMREAD_GRAYSCALE) for pth in image_paths
         ]
         trajectories.build_match_indexes(
-            feature_dir, mask_imgs, kpts_indices, i_proc=0
+            feature_dir, mask_imgs, kpts_indices, len(image_paths) // 4, i_proc=0
         )
 
         end = time()
