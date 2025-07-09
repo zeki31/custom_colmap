@@ -28,7 +28,7 @@ def main():
     args = parser.parse_args()
     cfg = load_typed_root_config(args.cfg_path, args.overrides)
 
-    save_dir = cfg.out_dir / cfg.wandb.project / cfg.wandb.name
+    save_dir = cfg.out_dir / cfg.wandb.group / cfg.wandb.name
     save_dir.mkdir(parents=True, exist_ok=True)
     cfg.to_yaml(save_dir / "config.yaml")
 
@@ -46,6 +46,7 @@ def main():
         name=cfg.wandb.name,
         dir=save_dir,
         config=cfg.to_dict(),
+        group=cfg.wandb.group,
         mode=cfg.wandb.mode,
     ) as logger:
         retriever = Retriever(cfg.retriever, logger)
@@ -56,7 +57,7 @@ def main():
         gc.collect()
 
         # Import keypoint distances of matches into colmap for RANSAC
-        importer = COLMAPImporter(logger)
+        importer = COLMAPImporter(logger, retriever)
         importer.import_into_colmap(
             database_path, feature_dir, image_paths, cfg.matcher.name, cfg.base_dir
         )

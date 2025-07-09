@@ -16,6 +16,7 @@ class WandbCfg:
     entity: str
     project: str
     name: str
+    group: str
     mode: Literal["online", "offline", "disabled"]
 
 

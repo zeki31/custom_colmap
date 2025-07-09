@@ -67,11 +67,11 @@ class Retriever:
             return image_paths
 
         image_paths_resized = self._resize_imgs(image_paths, "images")
-        mask_paths = [
-            Path(str(path.parent).replace("images", "masks")) / path.name
-            for path in image_paths
-        ]
-        # _ = self._resize_imgs(mask_paths, "masks")
+        # mask_paths = [
+        #     Path(str(path.parent).replace("images", "masks")) / path.name
+        #     for path in image_paths
+        # ]
+        # # _ = self._resize_imgs(mask_paths, "masks")
 
         return image_paths_resized
 
@@ -107,9 +107,7 @@ class Retriever:
     def get_index_pairs(
         self,
         paths: list[Path],
-        pair_generator: Literal[
-            "exhaustive", "frame-view", "view", "exhaustive_keyframe"
-        ],
+        pair_generator: str,
         window_len: Optional[int] = None,
     ) -> list[tuple[int, int]]:
         if pair_generator == "exhaustive":
@@ -149,16 +147,14 @@ class Retriever:
             pairs = sorted(set(pairs))  # Remove duplicates
 
         elif pair_generator == "exhaustive_keyframe":
-            n_frames = len(paths) // 4
+            n_frames = len(paths) // 3
 
-            keyframe_indices = range(len(paths) // 4, len(paths), window_len)
+            keyframe_indices = range(n_frames, len(paths), window_len)
             pairs = list(itertools.combinations(keyframe_indices, 2))
             # Exclude pairs from the same view
-            pairs = [pair for pair in pairs if pair[1] - pair[0] >= window_len]
-
-            # Handle fixed camera
-            for t in range(0, n_frames, window_len):
-                pairs.extend([(t, t + i * n_frames) for i in range(1, 4)])
+            pairs = [
+                pair for pair in pairs if (pair[0] % n_frames) != (pair[1] % n_frames)
+            ]
 
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Keyframe pairs (excluding pairs from the same view): {len(pairs)}")
@@ -172,5 +168,14 @@ class Retriever:
                 pairs.extend([(t, t + i * n_frames) for i in range(1, 4)])
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Pairs with fixed camera (same frame): {len(pairs)}")
+
+        elif pair_generator == "frame":
+            pairs = []
+            n_frames = len(paths) // 4
+            for i in range(n_frames, len(paths), n_frames):
+                for t in range(n_frames):
+                    pairs.append((i, i + t))
+            pairs = sorted(set(pairs))  # Remove duplicates
+            print(f"Frame pairs (same camera): {len(pairs)}")
 
         return pairs

@@ -1,5 +1,5 @@
 defaults:
-  - matcher: sparse
+  - matcher: tracking
 
 # Assume base_dir includes "1_fixed/images", "2_dynA/images", ...
 base_dir: ../sony_ai/20250529/valid/lane/running
@@ -8,9 +8,10 @@ base_dir: ../sony_ai/20250529/valid/lane/running
 out_dir: results
 wandb:
   entity: zeki31-global-page
-  project: colmap
+  project: custom_colmap
+  group: incremental_propagation
   name: lane_running_glomap
-  mode: offline
+  mode: online
 
 retriever:
   img_dir_type: stream # images / frame / stream

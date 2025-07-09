@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import h5py
 import kornia as K
@@ -27,6 +28,17 @@ class KeypointDetector:
         self.logger = logger
         self.device = device
 
+        self.dtype = torch.float32  # ALIKED has issues with float16
+        self.extractor = (
+            ALIKED(
+                max_num_keypoints=self.cfg.num_features,
+                detection_threshold=0.01,
+                # resize=self.cfg.resize_to,
+            )
+            .eval()
+            .to(self.device, self.dtype)
+        )
+
     def _load_torch_image(self, file_name: Path | str, device=torch.device("cpu")):
         """Loads an image and adds batch dimension"""
         img = K.io.load_image(file_name, K.io.ImageLoadType.RGB32, device=device)[
@@ -38,6 +50,7 @@ class KeypointDetector:
         self,
         paths: list[Path],
         feature_dir: Path,
+        mode: Literal["w", "a"] = "w",
     ) -> None:
         """Detects the keypoints in a list of images with ALIKED
 
@@ -47,31 +60,19 @@ class KeypointDetector:
         if (feature_dir / "descriptors.h5").exists():
             return
 
-        dtype = torch.float32  # ALIKED has issues with float16
-
-        extractor = (
-            ALIKED(
-                max_num_keypoints=self.cfg.num_features,
-                detection_threshold=0.01,
-                resize=self.cfg.resize_to,
-            )
-            .eval()
-            .to(self.device, dtype)
-        )
-
-        feature_dir.mkdir(parents=True, exist_ok=True)
-
         with h5py.File(
-            feature_dir / "keypoints.h5", mode="w"
+            feature_dir / "keypoints.h5", mode=mode
         ) as f_keypoints, h5py.File(
-            feature_dir / "descriptors.h5", mode="w"
+            feature_dir / "descriptors.h5", mode=mode
         ) as f_descriptors:
             for path in tqdm(paths, desc="Computing keypoints"):
                 key = "-".join(path.parts[-3:])
 
                 with torch.inference_mode():
-                    image = self._load_torch_image(path, device=self.device).to(dtype)
-                    features = extractor.extract(image)
+                    image = self._load_torch_image(path, device=self.device).to(
+                        self.dtype
+                    )
+                    features = self.extractor.extract(image)
 
                     f_keypoints[key] = (
                         features["keypoints"].squeeze().detach().cpu().numpy()

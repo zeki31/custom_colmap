@@ -1,3 +1,5 @@
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,9 +9,10 @@ import torch
 import wandb
 from tqdm import tqdm
 
-from src.matching.tracking.optimize.build import particlesfm
 from src.matching.tracking.trajectory import IncrementalTrajectorySet
 from src.submodules.cotracker.predictor import CoTrackerPredictor
+
+mp.set_start_method("spawn", force=True)
 
 
 @dataclass
@@ -31,11 +34,35 @@ class Tracker:
         self.cfg = cfg
         self.logger = logger
 
-    def track(self, image_paths: list[Path], feature_dir: Path, i_proc: int) -> None:
-        """Sequentially track point trajectories"""
-        if (feature_dir / "track.npy").exists():
-            return
+    def track(self, image_paths: list[Path], feature_dir: Path) -> None:
+        """Execute the tracking process in parallel."""
+        futures = []
+        with ProcessPoolExecutor(max_workers=2) as executor:
+            for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
+                sub_feature_dir = feature_dir / cam_name
+                if (sub_feature_dir / "full_trajs.npy").exists():
+                    print(f"Skipping {cam_name} as it already exists.")
+                    continue
 
+                sub_feature_dir.mkdir(parents=True, exist_ok=True)
+                sub_image_paths = [
+                    image_path
+                    for image_path in image_paths
+                    if cam_name in str(image_path)
+                ]
+
+                future = executor.submit(
+                    self.track_point, sub_image_paths, sub_feature_dir, i_proc + 1
+                )
+                futures.append(future)
+                print(f"Chunk {i_proc + 1}/3 submitted.")
+
+            _ = [f.result() for f in futures]
+
+    def track_point(
+        self, image_paths: list[Path], feature_dir: Path, i_proc: int
+    ) -> None:
+        """Track point trajectories in the given frames."""
         gpu_id = 0 if i_proc % 2 else 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
@@ -153,12 +180,12 @@ class Tracker:
 
             trajs.clear_active()
 
-        # Save the outputs
-        dict_trajs = {}
-        start_t = i_proc * len(image_paths)
-        for idx, traj in enumerate(trajs.full_trajs):
-            if traj.length() < self.cfg.traj_min_len:
-                continue
-            dict_trajs[idx + start_t] = traj
-        trajectories = particlesfm.TrajectorySet(dict_trajs)
-        np.save(feature_dir / "track.npy", trajectories)
+        # # Merge all videos
+        # import moviepy
+        # video_paths = sorted(Path(f"results/tracking_aliked_{i_proc}").glob("*.mp4"))
+        # video_clips = [moviepy.VideoFileClip(video_file) for video_file in video_paths]
+        # final_video = moviepy.concatenate_videoclips(video_clips)
+        # final_video.write_videofile(f"results/tracking_aliked_{i_proc}/merged_video.mp4", codec="libx264")
+        # # self.logger.log({"video": wandb.Video(f"results/tracking_aliked_{i_proc}/merged_video.mp4", fps=60, format="mp4")})
+
+        np.save(feature_dir / "full_trajs.npy", trajs.full_trajs)
