@@ -305,6 +305,9 @@ class KeypointMatcher:
         feature_dir: Path,
     ):
         """Match keypoints in the fixed camera exhaustively."""
+        if (feature_dir / "matches_fixed.h5").exists():
+            return
+
         # gpu_id = 0 if i_proc % 2 else 1
         gpu_id = 0
         _device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
@@ -323,10 +326,12 @@ class KeypointMatcher:
         kpts1_all = []
         key2_all = []
         with h5py.File(
-            feature_dir / "keypoints.h5", mode="r"
+            feature_dir / "keypoints.h5", mode="r+"
         ) as f_keypoints, h5py.File(
             feature_dir / "descriptors.h5", mode="r"
-        ) as f_descriptors:
+        ) as f_descriptors, h5py.File(
+            (feature_dir / "matches_fixed.h5"), mode="w"
+        ) as f_matches:
             for idx1, idx2 in tqdm(
                 index_pairs, desc="Matching keypoints in the process"
             ):
@@ -372,12 +377,13 @@ class KeypointMatcher:
                 kpts1_all.append(keypoints1.detach().cpu().numpy())
                 key2_all.append(key2)
 
-        with h5py.File(feature_dir / "matches.h5", mode="w") as f_matches:
             kpts1_all_stacked = np.vstack(kpts1_all.copy())  # shape (N_total, 2)
-            _, inverse_indices = np.unique(
+            kpts1_unique, inverse_indices = np.unique(
                 kpts1_all_stacked, axis=0, return_inverse=True
             )
             print(len(kpts1_all), kpts1_all_stacked.shape)
+            key1 = "-".join(paths[0].parts[-3:]) + "_unique"
+            f_keypoints[key1] = kpts1_unique
             start_idx = 0
             for kpts1, indices, key2 in zip(kpts1_all, indices_all, key2_all):
                 idx1_global = indices[:, 0] + start_idx
@@ -386,12 +392,7 @@ class KeypointMatcher:
 
                 # We have matches to consider
                 n_matches = len(indices)
-                if n_matches:
-                    if self.cfg.verbose:
-                        print(f"{key1}-{key2}: {n_matches} matches")
-
-                    # Store the matches in the group of one image
-                    if n_matches >= self.cfg.min_matches:
-                        key1 = "-".join(paths[0].parts[-3:])
-                        group = f_matches.require_group(key1)
-                        group.create_dataset(key2, data=indices.reshape(-1, 2))
+                # Store the matches in the group of one image
+                if n_matches >= self.cfg.min_matches:
+                    group = f_matches.require_group(key1)
+                    group.create_dataset(key2, data=indices.reshape(-1, 2))

@@ -112,7 +112,12 @@ class Tracker:
 
                 # # Save a video with predicted tracks
                 # from src.submodules.cotracker.utils.visualizer import Visualizer
-                # vis = Visualizer(save_dir=f"results/tracking_aliked_{i_proc}", pad_value=120, linewidth=1, fps=60)
+                # vis = Visualizer(
+                #     save_dir=f"results/tracking_aliked_{i_proc}",
+                #     pad_value=120,
+                #     linewidth=1,
+                #     fps=60,
+                # )
                 # vis.visualize(
                 #     video,
                 #     pred_tracks,
@@ -179,13 +184,5 @@ class Tracker:
                 pbar.update(1)
 
             trajs.clear_active()
-
-        # # Merge all videos
-        # import moviepy
-        # video_paths = sorted(Path(f"results/tracking_aliked_{i_proc}").glob("*.mp4"))
-        # video_clips = [moviepy.VideoFileClip(video_file) for video_file in video_paths]
-        # final_video = moviepy.concatenate_videoclips(video_clips)
-        # final_video.write_videofile(f"results/tracking_aliked_{i_proc}/merged_video.mp4", codec="libx264")
-        # # self.logger.log({"video": wandb.Video(f"results/tracking_aliked_{i_proc}/merged_video.mp4", fps=60, format="mp4")})
 
         np.save(feature_dir / "full_trajs.npy", trajs.full_trajs)

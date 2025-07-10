@@ -54,11 +54,8 @@ class Retriever:
                     for folder in cam_dirs
                     for img_path in sorted(
                         (base_dir / folder).glob(f"*.{self.cfg.ext}")
-                    )[self.cfg.start :]
+                    )[self.cfg.start :: self.cfg.stride]
                 ]
-
-        if self.cfg.stride > 1:
-            image_paths = image_paths[:: self.cfg.stride]
 
         print(f"Got {len(image_paths)} images")
         self.logger.summary["n_images"] = len(image_paths)
