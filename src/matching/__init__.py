@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 import wandb
 
@@ -18,6 +20,7 @@ def get_matcher(
     cfg: MatcherCfg,
     logger: wandb.sdk.wandb_run.Run,
     device: torch.device,
+    save_dir: Path,
     retriever: Retriever,
 ) -> Matcher:
-    return MATCHERS[cfg.name](cfg, logger, device, retriever)
+    return MATCHERS[cfg.name](cfg, logger, device, save_dir, retriever)

@@ -38,7 +38,7 @@ class Tracker:
         """Execute the tracking process in parallel."""
         futures = []
         with ProcessPoolExecutor(max_workers=2) as executor:
-            for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
+            for i_proc, cam_name in enumerate(["2_dynA"]):
                 sub_feature_dir = feature_dir / cam_name
                 if (sub_feature_dir / "full_trajs.npy").exists():
                     print(f"Skipping {cam_name} as it already exists.")
@@ -113,10 +113,10 @@ class Tracker:
                 # # Save a video with predicted tracks
                 # from src.submodules.cotracker.utils.visualizer import Visualizer
                 # vis = Visualizer(
-                #     save_dir=f"results/tracking_aliked_{i_proc}",
+                #     save_dir=f"results/tracking_aliked_12fps10win_{i_proc}",
                 #     pad_value=120,
                 #     linewidth=1,
-                #     fps=60,
+                #     fps=12,
                 # )
                 # vis.visualize(
                 #     video,

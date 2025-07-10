@@ -52,7 +52,7 @@ def main():
         retriever = Retriever(cfg.retriever, logger)
         image_paths = retriever.get_image_paths(cfg.base_dir)
 
-        matcher = get_matcher(cfg.matcher, logger, device, retriever)
+        matcher = get_matcher(cfg.matcher, logger, device, save_dir, retriever)
         matcher.match(image_paths, feature_dir)
         gc.collect()
 
@@ -66,7 +66,6 @@ def main():
         mapper.map(
             database_path,
             cfg.base_dir,
-            feature_dir,
             save_dir,
         )
 
