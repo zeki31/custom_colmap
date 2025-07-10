@@ -87,11 +87,12 @@ class IncrementalTrajectorySet(object):
     def generate_all_candidates(
         self, frame_path: Path
     ) -> tuple[Float[NDArray, "N 2"], Float[NDArray, "N D"]]:
-        # # Grid sampling of the image
+        # Grid sampling of the image
         # x, y = np.arange(0, self.w), np.arange(0, self.h)
         # xx, yy = np.meshgrid(x, y)
         # xys = np.stack([xx, yy], -1)
-        # s_xys = xys[:: self.ratio, :: self.ratio, :]
+        # s_xys = xys[:: self.ratio, :: self.ratio, :].astype(np.float32).reshape(-1, 2)  # shape: (N, 2)
+        # return s_xys, s_xys
 
         with torch.inference_mode():
             image = self._load_torch_image(frame_path, device=self.device).to(

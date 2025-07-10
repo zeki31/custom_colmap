@@ -54,6 +54,7 @@ class KeypointMatcher:
         paths: list[Path],
         feature_dir: Path,
         index_pairs: list[tuple[int, int]],
+        fixed: bool = False,
     ) -> None:
         """Computes distances between keypoints of images.
 
@@ -82,11 +83,11 @@ class KeypointMatcher:
                     mask_imgs if self.cfg.mask else None,
                     feature_dir,
                     i_proc,
+                    fixed,
                 )
                 futures.append(future)
                 print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
-            result = [f.result() for f in futures]
-        print(result)
+            _ = [f.result() for f in futures]
 
     def _keypoint_distances(
         self,
@@ -95,6 +96,7 @@ class KeypointMatcher:
         mask_imgs: list[torch.Tensor] | None,
         feature_dir: Path,
         i_proc: int,
+        fixed: bool,
     ):
         gpu_id = 0 if i_proc % 2 else 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
@@ -157,6 +159,8 @@ class KeypointMatcher:
 
                     # Store the matches in the group of one image
                     if n_matches >= self.cfg.min_matches:
+                        if fixed:
+                            key1 = "-".join(paths[0].parts[-3:])
                         group = f_matches.require_group(key1)
                         group.create_dataset(
                             key2, data=indices.detach().cpu().numpy().reshape(-1, 2)
@@ -293,3 +297,102 @@ class KeypointMatcher:
                     )
 
         return matched_traj_ids
+
+    def match_keypoints_fixed(
+        self,
+        index_pairs: list[tuple[int, int]],
+        paths: list[Path],
+        feature_dir: Path,
+    ):
+        """Match keypoints in the fixed camera exhaustively."""
+        if (feature_dir / "matches_fixed.h5").exists():
+            return
+
+        # gpu_id = 0 if i_proc % 2 else 1
+        gpu_id = 0
+        _device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+
+        _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(_device)
+
+        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
+        if self.cfg.mask and mask_dir.exists():
+            mask_imgs = [
+                torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
+                for path in paths
+            ]
+
+        # Match keypoints in the fixed camera over all pairs
+        indices_all = []
+        kpts1_all = []
+        key2_all = []
+        with h5py.File(
+            feature_dir / "keypoints.h5", mode="r+"
+        ) as f_keypoints, h5py.File(
+            feature_dir / "descriptors.h5", mode="r"
+        ) as f_descriptors, h5py.File(
+            (feature_dir / "matches_fixed.h5"), mode="w"
+        ) as f_matches:
+            for idx1, idx2 in tqdm(
+                index_pairs, desc="Matching keypoints in the process"
+            ):
+                key1 = "-".join(paths[idx1].parts[-3:])
+                key2 = "-".join(paths[idx2].parts[-3:])
+
+                keypoints1 = torch.from_numpy(f_keypoints[key1][...]).to(_device)
+                keypoints2 = torch.from_numpy(f_keypoints[key2][...]).to(_device)
+                descriptors1 = torch.from_numpy(f_descriptors[key1][...]).to(_device)
+                descriptors2 = torch.from_numpy(f_descriptors[key2][...]).to(_device)
+
+                with torch.inference_mode():
+                    _, indices = _matcher(
+                        descriptors1,
+                        descriptors2,
+                        KF.laf_from_center_scale_ori(keypoints1[None]),
+                        KF.laf_from_center_scale_ori(keypoints2[None]),
+                    )
+
+                # If mask is enabled, remove the matches that are in the mask
+                if self.cfg.mask:
+                    mask_img1 = mask_imgs[idx1].to(_device)
+
+                    # Get the pixel positions of the matches
+                    matched_keypoints1 = keypoints1[indices[:, 0], :2]
+
+                    mask1 = mask_img1[
+                        matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
+                    ]
+                    masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
+                    indices1 = torch.nonzero(
+                        torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
+                    )[0].unique()
+                    indices = indices[
+                        torch.nonzero(
+                            torch.isin(indices.reshape(2, -1)[0], indices1),
+                            as_tuple=True,
+                        )[0].unique(),
+                        :,
+                    ]
+
+                indices_all.append(indices.detach().cpu().numpy())
+                kpts1_all.append(keypoints1.detach().cpu().numpy())
+                key2_all.append(key2)
+
+            kpts1_all_stacked = np.vstack(kpts1_all.copy())  # shape (N_total, 2)
+            kpts1_unique, inverse_indices = np.unique(
+                kpts1_all_stacked, axis=0, return_inverse=True
+            )
+            print(len(kpts1_all), kpts1_all_stacked.shape)
+            key1 = "-".join(paths[0].parts[-3:]) + "_unique"
+            f_keypoints[key1] = kpts1_unique
+            start_idx = 0
+            for kpts1, indices, key2 in zip(kpts1_all, indices_all, key2_all):
+                idx1_global = indices[:, 0] + start_idx
+                indices[:, 0] = inverse_indices[idx1_global]
+                start_idx += len(kpts1)
+
+                # We have matches to consider
+                n_matches = len(indices)
+                # Store the matches in the group of one image
+                if n_matches >= self.cfg.min_matches:
+                    group = f_matches.require_group(key1)
+                    group.create_dataset(key2, data=indices.reshape(-1, 2))

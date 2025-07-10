@@ -1,6 +1,6 @@
 name: sparse
 
-pair_generator: exhaustive
+pair_generator: exhaustive_dynamic
 
 keypoint_detector:
   num_features: 4096
