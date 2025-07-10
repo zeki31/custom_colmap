@@ -27,11 +27,14 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         cfg: MatcherSparseCfg,
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
+        save_dir: Path,
         retriever: Retriever,
     ):
-        super().__init__(cfg, logger, device, retriever)
-        self.detector = KeypointDetector(cfg.keypoint_detector, logger, device)
-        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger)
+        super().__init__(cfg, logger, device, save_dir, retriever)
+        self.detector = KeypointDetector(
+            cfg.keypoint_detector, logger, device, save_dir
+        )
+        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger, save_dir)
 
     def match(
         self,

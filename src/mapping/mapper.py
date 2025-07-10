@@ -24,9 +24,7 @@ class Mapper:
         self.cfg = cfg
         self.logger = logger
 
-    def map(
-        self, database_path: Path, base_dir: Path, feature_dir: Path, save_dir: Path
-    ) -> None:
+    def map(self, database_path: Path, base_dir: Path, save_dir: Path) -> None:
         # Compute RANSAC (detect match outliers)
         # By doing it exhaustively we guarantee we will find the best possible configuration
         pycolmap.match_exhaustive(database_path)

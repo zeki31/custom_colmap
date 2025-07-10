@@ -1,14 +1,20 @@
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import h5py
 import kornia as K
+import numpy as np
 import torch
 import wandb
+from jaxtyping import Float, Int
+from numpy.typing import NDArray
 from tqdm import tqdm
 
-from src.submodules.LightGlue.lightglue import ALIKED
+from src.matching.tracking.trajectory import TrajectorySet
+from src.submodules.LightGlue.lightglue import ALIKED, viz2d
+from src.submodules.LightGlue.lightglue.utils import load_image
 
 
 @dataclass
@@ -23,10 +29,12 @@ class KeypointDetector:
         cfg: KeypointDetectorCfg,
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
+        save_dir: Path,
     ):
         self.cfg = cfg
         self.logger = logger
         self.device = device
+        self.save_dir = save_dir
 
         self.dtype = torch.float32  # ALIKED has issues with float16
         self.extractor = (
@@ -80,3 +88,70 @@ class KeypointDetector:
                     f_descriptors[key] = (
                         features["descriptors"].squeeze().detach().cpu().numpy()
                     )
+
+    def register_keypoints(
+        self,
+        paths: list[Path],
+        feature_dir: Path,
+        trajectories: TrajectorySet,
+        viz: bool = False,
+    ) -> dict[int, tuple[Float[NDArray, "... 2"], Int[NDArray, "..."]]]:
+        """Detects the keypoints in a list of images with ALIKED
+
+        Stores them in feature_dir/keypoints.h5 and feature_dir/descriptors.h5
+        to be used later with LightGlue
+        """
+        if viz:
+            viz_dir = self.save_dir / "keypoints_viz"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+
+        with h5py.File(
+            feature_dir / "keypoints.h5", mode="w"
+        ) as f_keypoints, h5py.File(
+            feature_dir / "descriptors.h5", mode="w"
+        ) as f_descriptors:
+            kpts_per_img = {}
+            for frame_id, trajs_dict in tqdm(
+                sorted(trajectories.invert_maps.items()), desc="Registering keypoints"
+            ):
+                key = "-".join(paths[frame_id].parts[-3:])
+                kpts = []
+                descs = []
+                traj_ids = []
+                for traj_id, idx_in_traj in sorted(trajs_dict.items()):
+                    traj = trajectories.trajs[traj_id]
+                    traj_ids.append(traj_id)
+                    kpts.append(traj.xys[idx_in_traj])
+                    descs.append(traj.descs[idx_in_traj])
+                kpts_np = np.stack(kpts, dtype=np.float32)
+                descs_np = np.stack(descs, dtype=np.float32)
+
+                if viz:
+                    image0 = load_image(paths[frame_id])
+                    viz2d.plot_images([image0])
+                    viz2d.plot_keypoints([kpts_np], ps=10)
+                    viz2d.save_plot(viz_dir / f"{key}.png")
+
+                f_keypoints[key] = kpts_np
+                f_descriptors[key] = descs_np
+                kpts_per_img[int(frame_id)] = (
+                    kpts_np,
+                    np.array(traj_ids, dtype=int),
+                )
+
+        if viz:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "12",
+                    "-i",
+                    str(viz_dir / "%*.png"),
+                    "-c:v",
+                    "libx264",
+                    str(viz_dir / "kpts.mp4"),
+                ]
+            )
+
+        return kpts_per_img

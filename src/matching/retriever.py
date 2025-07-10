@@ -162,16 +162,15 @@ class Retriever:
             pairs = []
             n_frames = len(paths) // 4
             for t in range(n_frames):
-                pairs.extend([(t, t + i * n_frames) for i in range(1, 4)])
+                pairs.extend([(t, t + i * n_frames) for i in range(1, 2)])
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Pairs with fixed camera (same frame): {len(pairs)}")
 
         elif pair_generator == "frame":
             pairs = []
             n_frames = len(paths) // 4
-            for i in range(n_frames, len(paths), n_frames):
-                for t in range(n_frames):
-                    pairs.append((i, i + t))
+            for i in range(n_frames, n_frames * 2, n_frames):
+                pairs.extend(list(itertools.combinations(range(i, i + n_frames), 2)))
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Frame pairs (same camera): {len(pairs)}")
 
