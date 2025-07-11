@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import subprocess
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ class TrackerCfg:
     traj_min_len: int = 2
     overlap: int = 2
     query: Literal["grid", "aliked"] = "grid"
+    viz: bool = False
 
 
 class Tracker:
@@ -32,9 +34,15 @@ class Tracker:
         self,
         cfg: TrackerCfg,
         logger: wandb.sdk.wandb_run.Run,
+        save_dir: Path,
     ):
         self.cfg = cfg
         self.logger = logger
+        self.save_dir = save_dir
+
+        if self.cfg.viz:
+            self.viz_dir = save_dir / "tracking_viz"
+            self.viz_dir.mkdir(parents=True, exist_ok=True)
 
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Execute the tracking process in parallel."""
@@ -118,21 +126,22 @@ class Tracker:
                     backward_tracking=True,
                 )
 
-                # # Save a video with predicted tracks
-                # from src.submodules.cotracker.utils.visualizer import Visualizer
-                # vis = Visualizer(
-                #     save_dir=f"results/tracking_aliked_12fps10win_{i_proc}",
-                #     pad_value=120,
-                #     linewidth=1,
-                #     fps=12,
-                # )
-                # vis.visualize(
-                #     video,
-                #     pred_tracks,
-                #     pred_visibility,
-                #     query_frame=0,
-                #     filename=f"track_{start_t:04d}_{end_t:04d}",
-                # )
+                if self.cfg.viz and i_proc == 1:
+                    from src.submodules.cotracker.utils.visualizer import Visualizer
+
+                    vis = Visualizer(
+                        save_dir=f"{self.viz_dir}",
+                        pad_value=120,
+                        linewidth=1,
+                        fps=12,
+                    )
+                    vis.visualize(
+                        video,
+                        pred_tracks,
+                        pred_visibility,
+                        query_frame=0,
+                        filename=f"{start_t:04d}_{end_t - 1:04d}",
+                    )
 
                 pred_tracks = pred_tracks[0].cpu().numpy()
                 pred_visibility = pred_visibility[0].cpu().numpy()
@@ -198,3 +207,30 @@ class Tracker:
             trajs.clear_active()
 
         np.save(feature_dir / "full_trajs.npy", trajs.full_trajs)
+
+        if self.cfg.viz and i_proc == 1:
+            mp4_files = sorted(self.viz_dir.glob("*.mp4"))
+            concat_list_path = self.viz_dir / "concat_list.txt"
+            with open(concat_list_path, "w") as f:
+                for mp4 in mp4_files:
+                    f.write(f"file '{mp4.name}'\n")
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-i",
+                    str(concat_list_path),
+                    "-c",
+                    "copy",
+                    str(self.viz_dir / "tracking.mp4"),
+                ]
+            )
+            # self.logger.log(
+            #     {
+            #         "Tracking": wandb.Video(
+            #             str(self.viz_dir / "tracking.mp4"), format="mp4"
+            #         )
+            #     }
+            # )

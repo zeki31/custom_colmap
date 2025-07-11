@@ -88,6 +88,26 @@ class Mapper:
 
         print(f"Mapping took {end - start:.2f} seconds")
         print(f"Mapping took {(end - start) / 60:.2f} minutes")
-        self.logger.log({"mapping_time": (end - start) // 60})
+
+        reconstruction = pycolmap.Reconstruction(save_dir / "sparse" / "0")
+        print(f"# of registered images: {len(reconstruction.images)}")
+        print(f"# of registered points: {len(reconstruction.points3D)}")
+        print(
+            f"Mean Reprojection Error (px): {reconstruction.compute_mean_reprojection_error():.2f}"
+        )
+        print(f"Mean Track Length: {reconstruction.compute_mean_track_length():.2f}")
+        print(
+            f"Mean Observations per Registered Image: {reconstruction.compute_mean_observations_per_reg_image():.2f}"
+        )
+        self.logger.log(
+            {
+                "Mapping time (min)": (end - start) // 60,
+                "# of registered images": len(reconstruction.images),
+                "# of registered points": len(reconstruction.points3D),
+                "Mean reprojection error (px)": reconstruction.compute_mean_reprojection_error(),
+                "Mean track length": reconstruction.compute_mean_track_length(),
+                "Mean observations per registered image": reconstruction.compute_mean_observations_per_reg_image(),
+            }
+        )
 
         # shutil.rmtree(feature_dir)

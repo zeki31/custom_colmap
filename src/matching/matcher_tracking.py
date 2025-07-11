@@ -38,7 +38,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
     ):
         super().__init__(cfg, logger, device, save_dir, retriever)
 
-        self.tracker = Tracker(cfg.tracker, logger)
+        self.tracker = Tracker(cfg.tracker, logger, save_dir)
         self.detector = KeypointDetector(
             cfg.keypoint_detector, logger, device, save_dir
         )
@@ -63,11 +63,11 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         print("Merge trajectories from all dynamic cameras...")
         track_path = feature_dir / "track.npy"
         if track_path.exists():
-            print("\t Loading pre-merged trajectories...")
+            print("2. Loading pre-merged trajectories...")
             trajectories = np.load(track_path, allow_pickle=True).item()
             trajectories.build_invert_indexes()
         else:
-            print("\t Merging trajectories from all cameras...")
+            print("1. Merging trajectories from all cameras...")
             full_trajs = []
             for cam_name in ["2_dynA"]:
                 trajs = np.load(
@@ -85,24 +85,25 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajectories.build_invert_indexes()
 
         print("Register keypoints in all cameras...")
-        # print("\t Register keypoints in a fixed camera...")
+        # print("1. Register keypoints in a fixed camera...")
         # self.detector.detect_keypoints(
         #     image_paths[: len(image_paths) // 4],
         #     feature_dir=feature_dir,
         # )
-        print("\t Register keypoints in dynamic cameras...")
+        print("2. Register keypoints in dynamic cameras...")
         kpts_per_img = self.detector.register_keypoints(
             image_paths,
             feature_dir,
             trajectories,
-            # viz=True,
+            self.tracker.cfg.query,
+            viz=True,
         )
 
         torch.cuda.empty_cache()
         gc.collect()
 
         print("Match keypoints in all cameras...")
-        print("\t Matching keypoints in the dynamic cameras...")
+        print("1. Matching keypoints in the dynamic cameras...")
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "frame", self.cfg.tracker.window_len
         )
@@ -114,13 +115,13 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             # viz=True,
         )
 
-        # print("\t Matching keypoints in the fixed camera...")
+        # print("2. Matching keypoints in the fixed camera...")
         # index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
         # self.matcher.match_keypoints_fixed(
         #     index_pairs,
         #     image_paths,
         #     feature_dir,
-        #     viz=True,
+        #     # viz=True,
         # )
 
         torch.cuda.empty_cache()
@@ -128,6 +129,5 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
 
         end = time()
 
-        self.logger.log({"matching_time": (end - start) // 60})
-        self.logger.summary["tracking_time"] = (lap_tracking - start) // 60
-        self.logger.summary["sparse_time"] = (end - lap_tracking) // 60
+        self.logger.log({"Matching time (min)": (end - start) // 60})
+        self.logger.summary["Tracking time (min)"] = (lap_tracking - start) // 60

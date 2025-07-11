@@ -21,7 +21,6 @@ from src.submodules.LightGlue.lightglue.utils import load_image
 @dataclass
 class KeypointDetectorCfg:
     num_features: int = 4096
-    resize_to: int = 1024
 
 
 class KeypointDetector:
@@ -95,6 +94,7 @@ class KeypointDetector:
         paths: list[Path],
         feature_dir: Path,
         trajectories: TrajectorySet,
+        query: Literal["grid", "aliked"],
         viz: bool = False,
     ) -> dict[int, tuple[Float[NDArray, "... 2"], Int[NDArray, "..."]]]:
         """Detects the keypoints in a list of images with ALIKED
@@ -107,9 +107,9 @@ class KeypointDetector:
             viz_dir.mkdir(parents=True, exist_ok=True)
 
         with h5py.File(
-            feature_dir / "keypoints.h5", mode="w"
+            feature_dir / "keypoints.h5", mode="r+"
         ) as f_keypoints, h5py.File(
-            feature_dir / "descriptors.h5", mode="w"
+            feature_dir / "descriptors.h5", mode="r+"
         ) as f_descriptors:
             kpts_per_img = {}
             for frame_id, trajs_dict in tqdm(
@@ -123,19 +123,25 @@ class KeypointDetector:
                     traj = trajectories.trajs[traj_id]
                     traj_ids.append(traj_id)
                     kpts.append(traj.xys[idx_in_traj])
-                    descs.append(traj.descs[idx_in_traj])
-                kpts_np = np.stack(kpts, dtype=np.float32)
-                descs_np = np.stack(descs, dtype=np.float32)
+                    if query == "aliked":
+                        descs.append(traj.descs[idx_in_traj])
+                kpts_np = np.stack(kpts, dtype=np.float32) + 0.5
+                if query == "aliked":
+                    descs_np = np.stack(descs, dtype=np.float32)
 
                 if viz:
                     image0 = load_image(paths[frame_id])
                     viz2d.plot_images([image0])
                     viz2d.plot_keypoints([kpts_np], ps=10)
+                    viz2d.add_text(
+                        0, paths[frame_id].parts[-3] + "_" + paths[frame_id].name
+                    )
                     viz2d.save_plot(viz_dir / f"{key}.png")
                     plt.close()
 
                 f_keypoints[key] = kpts_np
-                f_descriptors[key] = descs_np
+                if query == "aliked":
+                    f_descriptors[key] = descs_np
                 kpts_per_img[int(frame_id)] = (
                     kpts_np,
                     np.array(traj_ids, dtype=int),
@@ -154,6 +160,13 @@ class KeypointDetector:
                     "libx264",
                     str(viz_dir / "kpts.mp4"),
                 ]
+            )
+            self.logger.log(
+                {
+                    "Keypoint visualization": wandb.Video(
+                        str(viz_dir / "kpts.mp4"), format="mp4"
+                    )
+                }
             )
 
         return kpts_per_img

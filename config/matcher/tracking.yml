@@ -7,10 +7,10 @@ tracker:
   sample_ratio: 6
   overlap: 1
   query: aliked
+  viz: false
 
 keypoint_detector:
   num_features: 4096
-  resize_to: 1024
 
 keypoint_matcher:
   pair_generator: view

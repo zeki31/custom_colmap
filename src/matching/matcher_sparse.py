@@ -47,13 +47,9 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
             image_paths, self.cfg.pair_generator
         )
         self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
-        lap = time()
 
         torch.cuda.empty_cache()
         gc.collect()
-
-        print(f"Matching completed in {(lap - start) // 60} minutes.")
-        self.logger.log({"matching_time": (lap - start) // 60})
 
         index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
         self.matcher.match_keypoints_fixed(index_pairs_fixed, image_paths, feature_dir)
@@ -61,5 +57,4 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
-        print(f"Matching with fixed pairs completed in {(time() - lap) // 60} minutes.")
-        self.logger.log({"matching_fixed_time": (time() - lap) // 60})
+        self.logger.log({"Matching time (min)": (time() - start) // 60})

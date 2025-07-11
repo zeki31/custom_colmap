@@ -416,9 +416,11 @@ class KeypointMatcher:
 
         if self.cfg.mask:
             mask_imgs = [
-                cv2.imread(
-                    Path(str(path.parent).replace("images", "masks")) / path.name,
-                    cv2.IMREAD_GRAYSCALE,
+                torch.from_numpy(
+                    cv2.imread(
+                        Path(str(path.parent).replace("images", "masks")) / path.name,
+                        cv2.IMREAD_GRAYSCALE,
+                    )
                 )
                 for path in paths
             ]
@@ -449,6 +451,12 @@ class KeypointMatcher:
                 descriptors1 = torch.from_numpy(f_descriptors[key1][...]).to(_device)
                 descriptors2 = torch.from_numpy(f_descriptors[key2][...]).to(_device)
 
+                # print(key1, key2,
+                #       max(keypoints1[:, 0]), max(keypoints1[:, 1]),
+                #       min(keypoints1[:, 0]), min(keypoints1[:, 1]),
+                #       max(keypoints2[:, 0]), max(keypoints2[:, 1]),
+                #       min(keypoints2[:, 0]), min(keypoints2[:, 1]),
+                # )
                 with torch.inference_mode():
                     _, indices = _matcher(
                         descriptors1,
@@ -487,8 +495,9 @@ class KeypointMatcher:
             kpts1_unique, inverse_indices = np.unique(
                 kpts1_all_stacked, axis=0, return_inverse=True
             )
-            print("Before unique", kpts1_all_stacked.shape)
-            print("After unique", kpts1_unique.shape)
+            self.logger.summary["kpts_fixed_before_unique"] = kpts1_all_stacked.shape[0]
+            self.logger.summary["kpts_fixed_after_unique"] = kpts1_unique.shape[0]
+
             key1 = "-".join(paths[0].parts[-3:]) + "_unique"
             f_keypoints[key1] = kpts1_unique
             start_idx = 0

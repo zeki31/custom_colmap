@@ -116,16 +116,14 @@ class IncrementalTrajectorySet(object):
             )
             features = self.extractor.extract(image)
         kpts = features["keypoints"].detach().cpu().numpy().squeeze(0)  # shape: (N, 2)
-        valid_cond = (
-            (kpts[:, 0] > 0)
-            & (kpts[:, 0] < self.w - 1)
-            & (kpts[:, 1] > 0)
-            & (kpts[:, 1] < self.h - 1)
-        )
-        kpts = kpts[valid_cond]  # shape: (N_valid, 2)
-        descs = (features["descriptors"].detach().cpu().numpy().squeeze(0))[
-            valid_cond
-        ]  # shape: (N_valid, D)
+        # valid_cond = (
+        #     (kpts[:, 0] > 0)
+        #     & (kpts[:, 0] < self.w - 1)
+        #     & (kpts[:, 1] > 0)
+        #     & (kpts[:, 1] < self.h - 1)
+        # )
+        # kpts = kpts[valid_cond].copy()  # shape: (N_valid, 2)
+        descs = features["descriptors"].detach().cpu().numpy().squeeze(0)
         return kpts, descs
 
     def new_traj_all(self, start_times, start_xys, start_desc=None):
