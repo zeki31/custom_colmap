@@ -106,7 +106,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "frame", self.cfg.tracker.window_len
         )
-        self.matcher.match_keypoints_traj(
+        self.matcher.match_trajectories(
             image_paths,
             feature_dir,
             index_pairs,

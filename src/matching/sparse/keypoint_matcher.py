@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import h5py
 import kornia.feature as KF
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
@@ -69,10 +70,12 @@ class KeypointMatcher:
         if (feature_dir / "matches_0.h5").exists():
             return
 
-        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
-        if self.cfg.mask and mask_dir.exists():
+        if self.cfg.mask:
             mask_imgs = [
-                torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
                 for path in paths
             ]
 
@@ -192,14 +195,18 @@ class KeypointMatcher:
             return
 
         if self.cfg.mask:
-            mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
             mask_imgs = [
-                cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE) for path in paths
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
+                for path in paths
             ]
 
         if viz:
             viz_dir = self.save_dir / "matches_viz"
             viz_dir.mkdir(parents=True, exist_ok=True)
+            images = [load_image(path) for path in paths]
 
         with h5py.File(feature_dir / "matches.h5", mode="w") as f_matches:
             for idx1, idx2 in tqdm(
@@ -225,14 +232,15 @@ class KeypointMatcher:
                     indices = indices[mask_val == 0].copy()
 
                 if viz:
-                    image1 = load_image(paths[idx1])
-                    image2 = load_image(paths[idx2])
+                    image1 = images[idx1]
+                    image2 = images[idx2]
                     viz2d.plot_images([image1, image2])
                     viz2d.plot_matches(
                         kpts1[indices[:, 0]], kpts2[indices[:, 1]], color="lime", lw=0.2
                     )
                     viz2d.add_text(0, f"{key1}_{key2}", fs=20)
                     viz2d.save_plot(viz_dir / f"{key1}_{key2}.png")
+                    plt.close()
 
                 if len(indices) >= self.cfg.min_matches:
                     group = f_matches.require_group(key1)
@@ -267,10 +275,12 @@ class KeypointMatcher:
         ],
         index_pairs: list[tuple[int, int]],
     ) -> dict[int, dict[int, tuple[np.ndarray, np.ndarray]]]:
-        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
-        if self.cfg.mask and mask_dir.exists():
+        if self.cfg.mask:
             mask_imgs = [
-                torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
                 for path in paths
             ]
 
@@ -402,10 +412,12 @@ class KeypointMatcher:
 
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(_device)
 
-        mask_dir = Path(str(paths[0].parent).replace("images", "masks"))
-        if self.cfg.mask and mask_dir.exists():
+        if self.cfg.mask:
             mask_imgs = [
-                torch.from_numpy(cv2.imread(mask_dir / path.name, cv2.IMREAD_GRAYSCALE))
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
                 for path in paths
             ]
 
