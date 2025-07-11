@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal, Optional
 
 import h5py
 import kornia as K
@@ -18,17 +19,23 @@ class Trajectory(object):
         self,
         start_time: int,
         start_xy: Float[NDArray, "2"],
-        start_desc: Float[NDArray, " D"],
+        start_desc: Optional[Float[NDArray, " D"]] = None,
     ):
         self.times = []
         self.xys = []
         self.descs = []
         self.extend(start_time, start_xy, start_desc)
 
-    def extend(self, time: int, xy: Float[NDArray, "2"], desc: Float[NDArray, " D"]):
+    def extend(
+        self,
+        time: int,
+        xy: Float[NDArray, "2"],
+        desc: Optional[Float[NDArray, " D"]] = None,
+    ):
         self.times.append(time)
         self.xys.append(xy)
-        self.descs.append(desc)
+        if desc is not None:
+            self.descs.append(desc)
 
     def length(self):
         return len(self.xys)
@@ -54,12 +61,14 @@ class IncrementalTrajectorySet(object):
         sample_ratio: int,
         device: torch.device,
         init_frame_path: Path,
+        query: Literal["grid", "aliked"],
     ):
         self.total_length = total_length
         self.ratio = sample_ratio
         self.h, self.w = img_h, img_w
         self.active_trajs = []
         self.full_trajs = []
+        self.query = query
 
         self.device = device
         self.dtype = torch.float32  # ALIKED has issues with float16
@@ -73,9 +82,15 @@ class IncrementalTrajectorySet(object):
             .to(self.device, self.dtype)
         )
 
-        self.sample_candidates, self.candidate_desc = self.generate_all_candidates(
-            init_frame_path
-        )
+        if self.query == "grid":
+            self.all_candidates = self.generate_grid_candidates()
+            self.sample_candidates = np.reshape(np.copy(self.all_candidates), (-1, 2))
+
+        elif self.query == "aliked":
+            (
+                self.sample_candidates,
+                self.candidate_desc,
+            ) = self.generate_aliked_candidates(init_frame_path)
 
     def _load_torch_image(self, file_name: Path | str, device=torch.device("cpu")):
         """Loads an image and adds batch dimension"""
@@ -84,16 +99,17 @@ class IncrementalTrajectorySet(object):
         ]
         return img
 
-    def generate_all_candidates(
+    def generate_grid_candidates(self) -> Float[NDArray, "h_sampled w_sampled 2"]:
+        """Grid sampling of the image."""
+        x, y = np.arange(0, self.w), np.arange(0, self.h)
+        xx, yy = np.meshgrid(x, y)
+        xys = np.stack([xx, yy], -1, dtype=np.float32)
+        s_xys = xys[:: self.ratio, :: self.ratio, :]
+        return s_xys
+
+    def generate_aliked_candidates(
         self, frame_path: Path
     ) -> tuple[Float[NDArray, "N 2"], Float[NDArray, "N D"]]:
-        # Grid sampling of the image
-        # x, y = np.arange(0, self.w), np.arange(0, self.h)
-        # xx, yy = np.meshgrid(x, y)
-        # xys = np.stack([xx, yy], -1)
-        # s_xys = xys[:: self.ratio, :: self.ratio, :].astype(np.float32).reshape(-1, 2)  # shape: (N, 2)
-        # return s_xys, s_xys
-
         with torch.inference_mode():
             image = self._load_torch_image(frame_path, device=self.device).to(
                 self.dtype
@@ -113,12 +129,25 @@ class IncrementalTrajectorySet(object):
         return kpts, descs
 
     def new_traj_all(self, start_times, start_xys, start_desc=None):
-        start_desc = start_desc if start_desc is not None else self.candidate_desc
-        for time, xy, desc in zip(start_times, start_xys, start_desc):
-            t = Trajectory(int(time), xy, desc)
-            self.active_trajs.append(t)
+        if self.query == "grid":
+            for time, xy in zip(start_times, start_xys):
+                t = Trajectory(int(time), xy)
+                self.active_trajs.append(t)
 
-    def get_cur_pos(
+        elif self.query == "aliked":
+            start_desc = start_desc if start_desc is not None else self.candidate_desc
+            for time, xy, desc in zip(start_times, start_xys, start_desc):
+                t = Trajectory(int(time), xy, desc)
+                self.active_trajs.append(t)
+
+    def get_cur_pos(self):
+        # Get all the current traj positions
+        cur_pos = []
+        for i in range(len(self.active_trajs)):
+            cur_pos.append(self.active_trajs[i].get_tail_location())
+        return np.array(cur_pos)
+
+    def get_cur_pos_desc(
         self,
     ) -> tuple[Float[NDArray, "N_curr 2"], Float[NDArray, "N_curr D"]]:
         # Get all the current traj positions
@@ -134,7 +163,7 @@ class IncrementalTrajectorySet(object):
         next_xys: Float[NDArray, "N 2"],
         next_time: int,
         flags: Bool[NDArray, " N"],
-        next_descs: Float[NDArray, "N D"],
+        next_descs: Optional[Float[NDArray, "N D"]] = None,
         frame_path: Path = None,
     ):
         # print(f"Extending {len(self.active_trajs)} active trajectories with {len(next_xys)} new points at time {next_time}.")
@@ -149,7 +178,8 @@ class IncrementalTrajectorySet(object):
 
         new_active_trajs = []
         for i in range(len(flags)):
-            next_xy, flag, next_desc = next_xys[i], flags[i], next_descs[i]
+            next_xy, flag = next_xys[i], flags[i]
+            next_desc = next_descs[i] if next_descs is not None else None
             # flag = flag if int(next_xy[0]) < self.w and int(next_xy[1]) < self.h else False
             if not flag:
                 self.full_trajs.append(self.active_trajs[i])
@@ -167,42 +197,73 @@ class IncrementalTrajectorySet(object):
         occupied_map_trans = scipy.ndimage.morphology.distance_transform_edt(
             1.0 - occupied_map
         )  # [H, W, 1]
-        extracted_pts, extracted_descs = self.generate_all_candidates(
-            frame_path
-        )  # [N, 2]
+        if self.query == "grid":
+            sample_map = (occupied_map_trans > self.ratio)[
+                :: self.ratio, :: self.ratio, 0
+            ]
+            # Get current active query points
+            active_pts = self.get_cur_pos()  # shape: (N_active, 2)
+            non_active_candidates = np.copy(self.all_candidates[sample_map])
+            # Combine active points and non-active candidates
+            total_needed = 3600
+            n_active = len(active_pts)
+            n_non_active_needed = max(0, total_needed - n_active)
+            if len(non_active_candidates) > n_non_active_needed:
+                idx = np.random.choice(
+                    len(non_active_candidates), n_non_active_needed, replace=False
+                )
+                chosen_non_active = non_active_candidates[idx]
+            else:
+                chosen_non_active = non_active_candidates
 
-        # Get current active query points
-        active_pts, active_pts_desc = self.get_cur_pos()  # shape: (N_active, 2)
-        # Sample the candidates that are not occupied
-        xs = extracted_pts[:, 0].astype(int)
-        ys = extracted_pts[:, 1].astype(int)
-        # If occupied_map_trans has shape (H, W, 1), squeeze the last dimension
-        distances = occupied_map_trans[ys, xs].squeeze()  # shape: (N,)
-        sample_map = distances > self.ratio
-        non_active_candidates = extracted_pts[sample_map]
-        non_active_candidates_desc = extracted_descs[sample_map]
-        # print(f"Active points: {active_pts.shape}, Non-active candidates: {non_active_candidates.shape}")
-
-        # Combine active points and non-active candidates
-        total_needed = 4096
-        n_active = len(active_pts)
-        n_non_active_needed = max(0, total_needed - n_active)
-        if len(non_active_candidates) > n_non_active_needed:
-            idx = np.random.choice(
-                len(non_active_candidates), n_non_active_needed, replace=False
+            times = (np.ones(chosen_non_active.shape[0]) * next_time).astype(int)
+            self.new_traj_all(times, chosen_non_active)
+            self.sample_candidates = np.concatenate(
+                [active_pts, chosen_non_active], axis=0
             )
-            chosen_non_active = non_active_candidates[idx]
-            chosen_non_active_desc = non_active_candidates_desc[idx]
-        else:
-            chosen_non_active = non_active_candidates
-            chosen_non_active_desc = non_active_candidates_desc
 
-        times = (np.ones(chosen_non_active.shape[0]) * next_time).astype(int)
-        self.new_traj_all(times, chosen_non_active, chosen_non_active_desc)
-        self.sample_candidates = np.concatenate([active_pts, chosen_non_active], axis=0)
-        self.candidate_desc = np.concatenate(
-            [active_pts_desc, chosen_non_active_desc], axis=0
-        )
+        elif self.query == "aliked":
+            extracted_pts, extracted_descs = self.generate_aliked_candidates(
+                frame_path
+            )  # [N, 2]
+
+            # Get current active query points
+            (
+                active_pts,
+                active_pts_desc,
+            ) = self.get_cur_pos_desc()  # shape: (N_active, 2)
+            # Sample the candidates that are not occupied
+            xs = extracted_pts[:, 0].astype(int)
+            ys = extracted_pts[:, 1].astype(int)
+            # If occupied_map_trans has shape (H, W, 1), squeeze the last dimension
+            distances = occupied_map_trans[ys, xs].squeeze()  # shape: (N,)
+            sample_map = distances > self.ratio
+            non_active_candidates = extracted_pts[sample_map]
+            non_active_candidates_desc = extracted_descs[sample_map]
+            # print(f"Active points: {active_pts.shape}, Non-active candidates: {non_active_candidates.shape}")
+
+            # Combine active points and non-active candidates
+            total_needed = 4096
+            n_active = len(active_pts)
+            n_non_active_needed = max(0, total_needed - n_active)
+            if len(non_active_candidates) > n_non_active_needed:
+                idx = np.random.choice(
+                    len(non_active_candidates), n_non_active_needed, replace=False
+                )
+                chosen_non_active = non_active_candidates[idx]
+                chosen_non_active_desc = non_active_candidates_desc[idx]
+            else:
+                chosen_non_active = non_active_candidates
+                chosen_non_active_desc = non_active_candidates_desc
+
+            times = (np.ones(chosen_non_active.shape[0]) * next_time).astype(int)
+            self.new_traj_all(times, chosen_non_active, chosen_non_active_desc)
+            self.sample_candidates = np.concatenate(
+                [active_pts, chosen_non_active], axis=0
+            )
+            self.candidate_desc = np.concatenate(
+                [active_pts_desc, chosen_non_active_desc], axis=0
+            )
 
     def clear_active(self):
         for traj in self.active_trajs:

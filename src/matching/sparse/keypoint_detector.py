@@ -5,6 +5,7 @@ from typing import Literal
 
 import h5py
 import kornia as K
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
@@ -131,6 +132,7 @@ class KeypointDetector:
                     viz2d.plot_images([image0])
                     viz2d.plot_keypoints([kpts_np], ps=10)
                     viz2d.save_plot(viz_dir / f"{key}.png")
+                    plt.close()
 
                 f_keypoints[key] = kpts_np
                 f_descriptors[key] = descs_np
