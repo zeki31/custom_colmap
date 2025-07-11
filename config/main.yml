@@ -10,7 +10,7 @@ wandb:
   entity: zeki31-global-page
   project: custom_colmap
   group: rm_traj2match
-  name: all_frames_1cam
+  name: aliked_sampling_window=15
   mode: offline
 
 retriever:
@@ -18,7 +18,7 @@ retriever:
   ext: jpg
   start: 0
   duration: -1
-  stride: 1
+  stride: 5
 
   comp_ratio: 4
 

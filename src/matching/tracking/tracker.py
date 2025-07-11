@@ -2,6 +2,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -23,6 +24,7 @@ class TrackerCfg:
     sample_ratio: int = 6
     traj_min_len: int = 2
     overlap: int = 2
+    query: Literal["grid", "aliked"] = "grid"
 
 
 class Tracker:
@@ -69,7 +71,13 @@ class Tracker:
         h, w = cv2.imread(image_paths[0]).shape[:2]
         stride = self.cfg.window_len - self.cfg.overlap
         trajs = IncrementalTrajectorySet(
-            len(image_paths) + 1, h, w, self.cfg.sample_ratio, device, image_paths[0]
+            len(image_paths) + 1,
+            h,
+            w,
+            self.cfg.sample_ratio,
+            device,
+            image_paths[0],
+            self.cfg.query,
         )
 
         point_tracker = CoTrackerPredictor(
@@ -129,13 +137,13 @@ class Tracker:
                 pred_tracks = pred_tracks[0].cpu().numpy()
                 pred_visibility = pred_visibility[0].cpu().numpy()
 
-                valid_cond = (
-                    (pred_tracks[0][:, 0] > 0)
-                    & (pred_tracks[0][:, 0] < w - 1)
-                    & (pred_tracks[0][:, 1] > 0)
-                    & (pred_tracks[0][:, 1] < h - 1)
-                )
-                viz_mask = (pred_visibility[0] > 0) & valid_cond
+                # valid_cond = (
+                #     (pred_tracks[0][:, 0] > 0)
+                #     & (pred_tracks[0][:, 0] < w - 1)
+                #     & (pred_tracks[0][:, 1] > 0)
+                #     & (pred_tracks[0][:, 1] < h - 1)
+                # )
+                viz_mask = pred_visibility[0] > 0
                 for timestep in range(len(pred_tracks) - 1):
                     frame_id = start_t + i_proc * len(image_paths) + timestep
 
@@ -145,38 +153,42 @@ class Tracker:
                         times = (np.ones(points.shape[0]) * frame_id).astype(int)
                         trajs.new_traj_all(times, points)
 
-                    valid_cond = (
-                        (pred_tracks[timestep][:, 0] > 0)
-                        & (pred_tracks[timestep][:, 0] < w - 1)
-                        & (pred_tracks[timestep][:, 1] > 0)
-                        & (pred_tracks[timestep][:, 1] < h - 1)
-                    )
-                    viz_mask = viz_mask & (pred_visibility[timestep] > 0) & valid_cond
-                    valid_cond_next = (
-                        (pred_tracks[timestep + 1][viz_mask][:, 0] > 0)
-                        & (pred_tracks[timestep + 1][viz_mask][:, 0] < w - 1)
-                        & (pred_tracks[timestep + 1][viz_mask][:, 1] > 0)
-                        & (pred_tracks[timestep + 1][viz_mask][:, 1] < h - 1)
-                    )
+                    # valid_cond = (
+                    #     (pred_tracks[timestep][:, 0] > 0)
+                    #     & (pred_tracks[timestep][:, 0] < w - 1)
+                    #     & (pred_tracks[timestep][:, 1] > 0)
+                    #     & (pred_tracks[timestep][:, 1] < h - 1)
+                    # )
+                    viz_mask = viz_mask & (pred_visibility[timestep] > 0)
+                    # valid_cond_next = (
+                    #     (pred_tracks[timestep + 1][viz_mask][:, 0] > 0)
+                    #     & (pred_tracks[timestep + 1][viz_mask][:, 0] < w - 1)
+                    #     & (pred_tracks[timestep + 1][viz_mask][:, 1] > 0)
+                    #     & (pred_tracks[timestep + 1][viz_mask][:, 1] < h - 1)
+                    # )
 
                     # Propagate all the trajectories
                     if timestep == len(pred_tracks) - 2:
                         # Last timestep, we extend the active trajectories
                         trajs.extend_all(
-                            pred_tracks[timestep + 1][viz_mask],
-                            frame_id + 1,
-                            pred_visibility[timestep + 1][viz_mask] & valid_cond_next,
-                            trajs.candidate_desc[viz_mask],
-                            image_paths[end_t - 1]
+                            next_xys=pred_tracks[timestep + 1][viz_mask],
+                            next_time=frame_id + 1,
+                            flags=pred_visibility[timestep + 1][viz_mask],
+                            next_descs=trajs.candidate_desc[viz_mask]
+                            if trajs.query == "aliked"
+                            else None,
+                            frame_path=image_paths[end_t - 1]
                             if end_t < len(image_paths)
                             else image_paths[-1],
                         )
                     else:
                         trajs.extend_all(
-                            pred_tracks[timestep + 1][viz_mask],
-                            frame_id + 1,
-                            pred_visibility[timestep + 1][viz_mask] & valid_cond_next,
-                            trajs.candidate_desc[viz_mask],
+                            next_xys=pred_tracks[timestep + 1][viz_mask],
+                            next_time=frame_id + 1,
+                            flags=pred_visibility[timestep + 1][viz_mask],
+                            next_descs=trajs.candidate_desc[viz_mask]
+                            if trajs.query == "aliked"
+                            else None,
                         )
 
                 start_t += stride

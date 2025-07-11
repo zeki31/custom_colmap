@@ -238,8 +238,10 @@ class KeypointMatcher:
                     viz2d.plot_matches(
                         kpts1[indices[:, 0]], kpts2[indices[:, 1]], color="lime", lw=0.2
                     )
-                    viz2d.add_text(0, f"{key1}_{key2}", fs=20)
-                    viz2d.save_plot(viz_dir / f"{key1}_{key2}.png")
+                    key1_viz = paths[idx1].parts[-3] + "_" + paths[idx1].stem
+                    key2_viz = paths[idx2].parts[-3] + "_" + paths[idx2].stem
+                    viz2d.add_text(0, f"{key1_viz}-{key2_viz}", fs=20)
+                    viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
                     plt.close()
 
                 if len(indices) >= self.cfg.min_matches:
