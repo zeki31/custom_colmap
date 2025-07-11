@@ -8,11 +8,11 @@ import kornia as K
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import wandb
 from jaxtyping import Float, Int
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+import wandb
 from src.matching.tracking.trajectory import TrajectorySet
 from src.submodules.LightGlue.lightglue import ALIKED, viz2d
 from src.submodules.LightGlue.lightglue.utils import load_image
@@ -21,7 +21,6 @@ from src.submodules.LightGlue.lightglue.utils import load_image
 @dataclass
 class KeypointDetectorCfg:
     num_features: int = 4096
-    resize_to: int = 1024
 
 
 class KeypointDetector:
@@ -95,6 +94,7 @@ class KeypointDetector:
         paths: list[Path],
         feature_dir: Path,
         trajectories: TrajectorySet,
+        query: Literal["grid", "aliked"],
         viz: bool = False,
     ) -> dict[int, tuple[Float[NDArray, "... 2"], Int[NDArray, "..."]]]:
         """Detects the keypoints in a list of images with ALIKED
@@ -123,9 +123,11 @@ class KeypointDetector:
                     traj = trajectories.trajs[traj_id]
                     traj_ids.append(traj_id)
                     kpts.append(traj.xys[idx_in_traj])
-                    descs.append(traj.descs[idx_in_traj])
+                    if query == "aliked":
+                        descs.append(traj.descs[idx_in_traj])
                 kpts_np = np.stack(kpts, dtype=np.float32)
-                descs_np = np.stack(descs, dtype=np.float32)
+                if query == "aliked":
+                    descs_np = np.stack(descs, dtype=np.float32)
 
                 if viz:
                     image0 = load_image(paths[frame_id])
@@ -135,7 +137,8 @@ class KeypointDetector:
                     plt.close()
 
                 f_keypoints[key] = kpts_np
-                f_descriptors[key] = descs_np
+                if query == "aliked":
+                    f_descriptors[key] = descs_np
                 kpts_per_img[int(frame_id)] = (
                     kpts_np,
                     np.array(traj_ids, dtype=int),
@@ -154,6 +157,13 @@ class KeypointDetector:
                     "libx264",
                     str(viz_dir / "kpts.mp4"),
                 ]
+            )
+            self.logger.log(
+                {
+                    "Keypoint visualization": wandb.Video(
+                        str(viz_dir / "kpts.mp4"), format="mp4"
+                    )
+                }
             )
 
         return kpts_per_img

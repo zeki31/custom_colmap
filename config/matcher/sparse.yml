@@ -4,7 +4,6 @@ pair_generator: exhaustive_dynamic
 
 keypoint_detector:
   num_features: 4096
-  resize_to: 1024
 
 keypoint_matcher:
   min_matches: 15
