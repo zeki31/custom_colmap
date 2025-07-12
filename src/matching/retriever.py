@@ -144,13 +144,13 @@ class Retriever:
             pairs = sorted(set(pairs))  # Remove duplicates
 
         elif pair_generator == "exhaustive_keyframe":
-            n_frames = len(paths) // 3
+            n_frames = len(paths) // 4
 
             keyframe_indices = range(n_frames, len(paths), window_len)
             pairs = list(itertools.combinations(keyframe_indices, 2))
             # Exclude pairs from the same view
             pairs = [
-                pair for pair in pairs if (pair[0] % n_frames) != (pair[1] % n_frames)
+                pair for pair in pairs if (pair[0] // n_frames) != (pair[1] // n_frames)
             ]
 
             pairs = sorted(set(pairs))  # Remove duplicates
@@ -169,7 +169,7 @@ class Retriever:
         elif pair_generator == "frame":
             pairs = []
             n_frames = len(paths) // 4
-            for i in range(n_frames, n_frames * 2, n_frames):
+            for i in range(n_frames, n_frames * 4, n_frames):
                 pairs.extend(list(itertools.combinations(range(i, i + n_frames), 2)))
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Frame pairs (same camera): {len(pairs)}")
