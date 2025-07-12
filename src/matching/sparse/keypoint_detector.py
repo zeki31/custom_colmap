@@ -1,7 +1,7 @@
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import h5py
 import kornia as K
@@ -58,7 +58,7 @@ class KeypointDetector:
         self,
         paths: list[Path],
         feature_dir: Path,
-        mode: Literal["w", "a"] = "w",
+        mode: Literal["w", "r+"] = "w",
     ) -> None:
         """Detects the keypoints in a list of images with ALIKED
 
@@ -96,7 +96,14 @@ class KeypointDetector:
         trajectories: TrajectorySet,
         query: Literal["grid", "aliked"],
         viz: bool = False,
-    ) -> dict[int, tuple[Float[NDArray, "... 2"], Int[NDArray, "..."]]]:
+    ) -> dict[
+        int,
+        tuple[
+            Float[NDArray, "... 2"],
+            Optional[Float[NDArray, "... D"]],
+            Int[NDArray, "..."],
+        ],
+    ]:
         """Detects the keypoints in a list of images with ALIKED
 
         Stores them in feature_dir/keypoints.h5 and feature_dir/descriptors.h5
@@ -107,9 +114,9 @@ class KeypointDetector:
             viz_dir.mkdir(parents=True, exist_ok=True)
 
         with h5py.File(
-            feature_dir / "keypoints.h5", mode="r+"
+            feature_dir / "keypoints.h5", mode="w"
         ) as f_keypoints, h5py.File(
-            feature_dir / "descriptors.h5", mode="r+"
+            feature_dir / "descriptors.h5", mode="w"
         ) as f_descriptors:
             kpts_per_img = {}
             for frame_id, trajs_dict in tqdm(
@@ -144,6 +151,7 @@ class KeypointDetector:
                     f_descriptors[key] = descs_np
                 kpts_per_img[int(frame_id)] = (
                     kpts_np,
+                    descs_np if query == "aliked" else None,
                     np.array(traj_ids, dtype=int),
                 )
 

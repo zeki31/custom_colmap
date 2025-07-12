@@ -51,10 +51,10 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
-        index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
-        self.matcher.match_keypoints_fixed(index_pairs_fixed, image_paths, feature_dir)
+        # index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
+        # self.matcher.match_keypoints_fixed(index_pairs_fixed, image_paths, feature_dir)
 
-        torch.cuda.empty_cache()
-        gc.collect()
+        # torch.cuda.empty_cache()
+        # gc.collect()
 
         self.logger.log({"Matching time (min)": (time() - start) // 60})

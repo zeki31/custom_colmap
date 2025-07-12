@@ -69,7 +69,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         else:
             print("1. Merging trajectories from all cameras...")
             full_trajs = []
-            for cam_name in ["2_dynA"]:
+            for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
                 trajs = np.load(
                     feature_dir / cam_name / "full_trajs.npy", allow_pickle=True
                 )
@@ -85,35 +85,42 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajectories.build_invert_indexes()
 
         print("Register keypoints in all cameras...")
-        # print("1. Register keypoints in a fixed camera...")
-        # self.detector.detect_keypoints(
-        #     image_paths[: len(image_paths) // 4],
-        #     feature_dir=feature_dir,
-        # )
-        print("2. Register keypoints in dynamic cameras...")
+        print("1. Register keypoints in dynamic cameras...")
         kpts_per_img = self.detector.register_keypoints(
             image_paths,
             feature_dir,
             trajectories,
             self.tracker.cfg.query,
-            viz=True,
+            # viz=True,
         )
+        # print("2. Register keypoints in a fixed camera...")
+        # self.detector.detect_keypoints(
+        #     image_paths[: len(image_paths) // 4],
+        #     feature_dir=feature_dir,
+        #     mode="r+",
+        # )
 
         torch.cuda.empty_cache()
         gc.collect()
 
         print("Match keypoints in all cameras...")
-        print("1. Matching keypoints in the dynamic cameras...")
+        print("1. Matching keypoints in each dynamic camera...")
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "frame", self.cfg.tracker.window_len
         )
-        self.matcher.match_trajectories(
+        self.matcher.traj2match(
             image_paths,
             feature_dir,
             index_pairs,
             kpts_per_img,
             # viz=True,
         )
+        gc.collect()
+        print("2. Matching keypoints among dynamic cameras...")
+        index_pairs = self.retriever.get_index_pairs(
+            image_paths, "exhaustive_keyframe", self.cfg.tracker.window_len
+        )
+        self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
 
         # print("2. Matching keypoints in the fixed camera...")
         # index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
