@@ -10,14 +10,14 @@ wandb:
   entity: zeki31-global-page
   project: custom_colmap
   group: view_match
-  name: debug_match_trajectories
+  name: lane_running_all_frames
   mode: offline
 
 retriever:
   img_dir_type: stream # images / frame / stream
   ext: jpg
   start: 0
-  duration: 200
+  duration: -1
   stride: 5
 
   comp_ratio: 4

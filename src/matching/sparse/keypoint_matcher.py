@@ -184,6 +184,7 @@ class KeypointMatcher:
                 Int[NDArray, "..."],
             ],
         ],
+        viz: bool = False,
     ) -> set[tuple[int, int]]:
         """Match trajectories in the different dynamic cameras."""
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -191,14 +192,16 @@ class KeypointMatcher:
 
         if self.cfg.mask:
             mask_imgs = [
-                torch.from_numpy(
-                    cv2.imread(
-                        Path(str(path.parent).replace("images", "masks")) / path.name,
-                        cv2.IMREAD_GRAYSCALE,
-                    )
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
                 )
                 for path in paths
             ]
+
+        if viz:
+            viz_dir = self.save_dir / "matched_trajs_viz"
+            viz_dir.mkdir(parents=True, exist_ok=True)
 
         n_frames = len(paths) // 4
         traj_pairs = []
@@ -220,34 +223,63 @@ class KeypointMatcher:
                     KF.laf_from_center_scale_ori(keypoints1[None]),
                     KF.laf_from_center_scale_ori(keypoints2[None]),
                 )
+            indices = indices.detach().cpu().numpy().reshape(-1, 2)
 
             if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
-                mask_img1 = mask_imgs[idx1].to(device)
-
                 # Get the pixel positions of the matches
-                matched_keypoints1 = keypoints1[indices[:, 0], :2]
-
-                mask1 = mask_img1[
-                    matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
+                mask1 = mask_imgs[idx1]
+                matched_kpts1 = kpts1[indices[:, 0]]
+                mask_val = mask1[
+                    matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
                 ]
-                masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
-                indices1 = torch.nonzero(
-                    torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
-                )[0].unique()
-                indices = indices[
-                    torch.nonzero(
-                        torch.isin(indices.reshape(2, -1)[0], indices1),
-                        as_tuple=True,
-                    )[0].unique(),
-                    :,
-                ]
+                indices = indices[mask_val == 0].copy()
 
-            indices = indices.detach().cpu().numpy().reshape(-1, 2)
+            if viz:
+                image1 = load_image(paths[idx1])
+                image2 = load_image(paths[idx2])
+                viz2d.plot_images([image1, image2])
+                viz2d.plot_matches(
+                    keypoints1[indices[:, 0]],
+                    keypoints2[indices[:, 1]],
+                    color="lime",
+                    lw=0.2,
+                )
+                key1_viz = paths[idx1].parts[-3] + "_" + paths[idx1].stem
+                key2_viz = paths[idx2].parts[-3] + "_" + paths[idx2].stem
+                viz2d.add_text(0, key1_viz, fs=20)
+                viz2d.add_text(1, key2_viz, fs=20)
+                viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+                plt.close()
+
             if len(indices):
                 matched_traj_ids = np.stack(
                     [traj_ids1[indices[:, 0]], traj_ids2[indices[:, 1]]], axis=1
                 )
                 traj_pairs.extend(matched_traj_ids.tolist())
+
+        if viz:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "12",
+                    "-i",
+                    str(viz_dir / "%*.png"),
+                    "-c:v",
+                    "libx264",
+                    str(viz_dir / "matches.mp4"),
+                ]
+            )
+            wandb.log(
+                {
+                    "Matched Trajectories": wandb.Video(
+                        str(viz_dir / "matches.mp4"), format="mp4"
+                    )
+                }
+            )
+            for img in viz_dir.glob("*.png"):
+                img.unlink()
 
         return set(map(tuple, traj_pairs))
 

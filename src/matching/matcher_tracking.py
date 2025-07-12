@@ -114,7 +114,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         )
         traj_pairs = self.matcher.match_trajectories(
             image_paths,
-            feature_dir,
             index_pairs,
             kpts_per_img,
             # viz=True,
