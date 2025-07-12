@@ -46,7 +46,10 @@ class Retriever:
                     for folder in cam_dirs
                     for img_path in sorted(
                         (base_dir / folder).glob(f"*.{self.cfg.ext}")
-                    )[self.cfg.start : self.cfg.start + self.cfg.duration]
+                    )[
+                        self.cfg.start : self.cfg.start
+                        + self.cfg.duration : self.cfg.stride
+                    ]
                 ]
             else:
                 image_paths = [
@@ -143,7 +146,7 @@ class Retriever:
                 )
             pairs = sorted(set(pairs))  # Remove duplicates
 
-        elif pair_generator == "exhaustive_keyframe":
+        elif pair_generator == "exhaustive_keyframe_excluding_same_view":
             n_frames = len(paths) // 4
 
             keyframe_indices = range(n_frames, len(paths), window_len)

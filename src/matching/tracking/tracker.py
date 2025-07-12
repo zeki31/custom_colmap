@@ -47,7 +47,7 @@ class Tracker:
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Execute the tracking process in parallel."""
         futures = []
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=3) as executor:
             for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
                 sub_feature_dir = feature_dir / cam_name
                 if (sub_feature_dir / "full_trajs.npy").exists():
@@ -73,8 +73,9 @@ class Tracker:
         self, image_paths: list[Path], feature_dir: Path, i_proc: int
     ) -> None:
         """Track point trajectories in the given frames."""
-        gpu_id = 0 if i_proc % 2 else 1
-        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+        device = torch.device(
+            f"cuda:{i_proc - 1}" if torch.cuda.is_available() else "cpu"
+        )
 
         h, w = cv2.imread(image_paths[0]).shape[:2]
         stride = self.cfg.window_len - self.cfg.overlap
@@ -208,7 +209,7 @@ class Tracker:
 
         np.save(feature_dir / "full_trajs.npy", trajs.full_trajs)
 
-        if self.cfg.viz and i_proc == 1:
+        if self.cfg.viz and i_proc == 0:
             mp4_files = sorted(self.viz_dir.glob("*.mp4"))
             concat_list_path = self.viz_dir / "concat_list.txt"
             with open(concat_list_path, "w") as f:

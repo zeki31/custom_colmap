@@ -8,6 +8,7 @@ from typing import Literal
 import numpy as np
 import torch
 import wandb
+from tqdm import tqdm
 
 from src.matching.matcher import Matcher
 from src.matching.retriever import Retriever
@@ -15,6 +16,7 @@ from src.matching.sparse.keypoint_detector import KeypointDetector, KeypointDete
 from src.matching.sparse.keypoint_matcher import KeypointMatcher, KeypointMatcherCfg
 from src.matching.tracking.tracker import Tracker, TrackerCfg
 from src.matching.tracking.trajectory import TrajectorySet
+from src.matching.tracking.union_find import UnionFind
 
 mp.set_start_method("spawn", force=True)
 
@@ -52,22 +54,23 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
 
         start = time()
 
-        print("Track points over frames in dynamic cameras...")
+        print("1. Track points over frames in dynamic cameras...")
         self.tracker.track(image_paths, feature_dir)
         lap_tracking = time()
         print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
+        self.logger.summary["Tracking time (min)"] = (lap_tracking - start) // 60
 
         torch.cuda.empty_cache()
         gc.collect()
 
-        print("Merge trajectories from all dynamic cameras...")
+        print("--Merge trajectories from all dynamic cameras...")
         track_path = feature_dir / "track.npy"
         if track_path.exists():
-            print("2. Loading pre-merged trajectories...")
+            print("-- Loading pre-merged trajectories...")
             trajectories = np.load(track_path, allow_pickle=True).item()
             trajectories.build_invert_indexes()
         else:
-            print("1. Merging trajectories from all cameras...")
+            print("-- Merging trajectories from all cameras...")
             full_trajs = []
             for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
                 trajs = np.load(
@@ -77,15 +80,15 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             # Build TrajectorySet
             dict_trajs = {}
             for idx, traj in enumerate(full_trajs):
-                if traj.length() < self.cfg.tracker.traj_min_len:
-                    continue
+                # if traj.length() < self.cfg.tracker.traj_min_len:
+                #     continue
                 dict_trajs[idx] = traj
             trajectories = TrajectorySet(dict_trajs)
             np.save(track_path, trajectories, allow_pickle=True)
             trajectories.build_invert_indexes()
 
-        print("Register keypoints in all cameras...")
-        print("1. Register keypoints in dynamic cameras...")
+        print("2. Register keypoints in all cameras...")
+        print("-- Register keypoints in dynamic cameras...")
         kpts_per_img = self.detector.register_keypoints(
             image_paths,
             feature_dir,
@@ -93,7 +96,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.tracker.cfg.query,
             # viz=True,
         )
-        # print("2. Register keypoints in a fixed camera...")
+        # print("-- Register keypoints in a fixed camera...")
         # self.detector.detect_keypoints(
         #     image_paths[: len(image_paths) // 4],
         #     feature_dir=feature_dir,
@@ -103,8 +106,54 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
-        print("Match keypoints in all cameras...")
-        print("1. Matching keypoints in each dynamic camera...")
+        print("3. Match keypoints in keyframes among different cameras...")
+        index_pairs = self.retriever.get_index_pairs(
+            image_paths,
+            "exhaustive_keyframe_excluding_same_view",
+            self.cfg.tracker.window_len,
+        )
+        traj_pairs = self.matcher.match_trajectories(
+            image_paths,
+            feature_dir,
+            index_pairs,
+            kpts_per_img,
+            # viz=True,
+        )
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        print("-- Extend trajectories based on matched ids...")
+        trajs = trajectories.trajs
+        uf = UnionFind(len(trajs))
+        for traj_id1, traj_id2 in tqdm(traj_pairs, desc="Extending trajectories"):
+            uf.union(traj_id1, traj_id2)
+
+        for traj_id in tqdm(trajs.copy(), desc="Merging trajectories"):
+            root_traj_id = uf.root(traj_id)
+            if root_traj_id == traj_id:
+                continue
+            traj = trajs.pop(traj_id)
+            trajs[root_traj_id].xys.extend(traj.xys)
+            trajs[root_traj_id].descs.extend(traj.descs)
+            trajs[root_traj_id].times.extend(traj.times)
+
+        trajectories = TrajectorySet(trajs)
+        extended_track_path = feature_dir / "extended_track.npy"
+        np.save(extended_track_path, trajectories, allow_pickle=True)
+        trajectories.build_invert_indexes()
+
+        print("-- Register keypoints again to update traj_ids...")
+        kpts_per_img = self.detector.register_keypoints(
+            image_paths,
+            feature_dir,
+            trajectories,
+            self.tracker.cfg.query,
+            # viz=True,
+        )
+        gc.collect()
+
+        print("4. Converting trajectories to matches...")
+        print("-- Matching keypoints in each dynamic camera...")
         index_pairs = self.retriever.get_index_pairs(
             image_paths, "frame", self.cfg.tracker.window_len
         )
@@ -116,11 +165,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             # viz=True,
         )
         gc.collect()
-        print("2. Matching keypoints among dynamic cameras...")
-        index_pairs = self.retriever.get_index_pairs(
-            image_paths, "exhaustive_keyframe", self.cfg.tracker.window_len
-        )
-        self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
 
         # print("2. Matching keypoints in the fixed camera...")
         # index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
@@ -137,4 +181,3 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         end = time()
 
         self.logger.log({"Matching time (min)": (end - start) // 60})
-        self.logger.summary["Tracking time (min)"] = (lap_tracking - start) // 60
