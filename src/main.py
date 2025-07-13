@@ -43,7 +43,7 @@ def main():
     with wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
-        name=cfg.wandb.name,
+        name=f"{cfg.wandb.group}/{cfg.wandb.name}",
         dir=save_dir,
         config=cfg.to_dict(),
         group=cfg.wandb.group,

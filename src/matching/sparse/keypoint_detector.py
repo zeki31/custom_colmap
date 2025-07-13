@@ -176,5 +176,7 @@ class KeypointDetector:
                     )
                 }
             )
+            for img in viz_dir.glob("*.png"):
+                img.unlink()
 
         return kpts_per_img

@@ -71,16 +71,14 @@ class KeypointMatcher:
 
         if self.cfg.mask:
             mask_imgs = [
-                torch.from_numpy(
-                    cv2.imread(
-                        Path(str(path.parent).replace("images", "masks")) / path.name,
-                        cv2.IMREAD_GRAYSCALE,
-                    )
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
                 )
                 for path in paths
             ]
 
-        n_cpu = min(mp.cpu_count(), 10)
+        n_cpu = min(mp.cpu_count(), 12)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
         futures = []
@@ -102,15 +100,17 @@ class KeypointMatcher:
         self,
         index_pairs: list[tuple[int, int]],
         paths: list[Path],
-        mask_imgs: list[torch.Tensor] | None,
+        mask_imgs: list[NDArray] | None,
         feature_dir: Path,
         i_proc: int,
     ):
-        gpu_id = 0 if i_proc % 2 else 1
-        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+        # gpu_id = 0 if i_proc % 2 else 1
+        device = torch.device(
+            f"cuda:{i_proc % 3}" if torch.cuda.is_available() else "cpu"
+        )
 
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
-
+        n_frames = len(paths) // 4
         with h5py.File(
             feature_dir / "keypoints.h5", mode="r"
         ) as f_keypoints, h5py.File(
@@ -136,28 +136,16 @@ class KeypointMatcher:
                         KF.laf_from_center_scale_ori(keypoints1[None]),
                         KF.laf_from_center_scale_ori(keypoints2[None]),
                     )
+                indices = indices.detach().cpu().numpy().reshape(-1, 2)
 
-                # If mask is enabled, remove the matches that are in the mask
-                if self.cfg.mask:
-                    mask_img1 = mask_imgs[idx1].to(device)
-
+                if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
                     # Get the pixel positions of the matches
-                    matched_keypoints1 = keypoints1[indices[:, 0], :2]
-
-                    mask1 = mask_img1[
-                        matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
+                    mask1 = mask_imgs[idx1]
+                    matched_kpts1 = f_keypoints[key1][...][indices[:, 0]]
+                    mask_val = mask1[
+                        matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
                     ]
-                    masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
-                    indices1 = torch.nonzero(
-                        torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
-                    )[0].unique()
-                    indices = indices[
-                        torch.nonzero(
-                            torch.isin(indices.reshape(2, -1)[0], indices1),
-                            as_tuple=True,
-                        )[0].unique(),
-                        :,
-                    ]
+                    indices = indices[mask_val == 0].copy()
 
                 # We have matches to consider
                 n_matches = len(indices)
@@ -168,9 +156,118 @@ class KeypointMatcher:
                     # Store the matches in the group of one image
                     if n_matches >= self.cfg.min_matches:
                         group = f_matches.require_group(key1)
-                        group.create_dataset(
-                            key2, data=indices.detach().cpu().numpy().reshape(-1, 2)
-                        )
+                        group.create_dataset(key2, data=indices)
+
+    def match_trajectories(
+        self,
+        paths: list[Path],
+        index_pairs: list[tuple[int, int]],
+        kpts_per_img: dict[
+            int,
+            tuple[
+                Float[NDArray, "... 2"],
+                Float[NDArray, "... D"],
+                Int[NDArray, "..."],
+            ],
+        ],
+        viz: bool = False,
+    ) -> set[tuple[int, int]]:
+        """Match trajectories in the different dynamic cameras."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
+
+        if self.cfg.mask:
+            mask_imgs = [
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
+                for path in paths
+            ]
+
+        if viz:
+            viz_dir = self.save_dir / "matched_trajs_viz"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+
+        n_frames = len(paths) // 4
+        traj_pairs = []
+        for idx1, idx2 in tqdm(
+            index_pairs, desc="Matching trajectories in different dynamic cameras"
+        ):
+            kpts1, descs1, traj_ids1 = kpts_per_img[idx1]
+            kpts2, descs2, traj_ids2 = kpts_per_img[idx2]
+
+            keypoints1 = torch.from_numpy(kpts1).to(device)
+            keypoints2 = torch.from_numpy(kpts2).to(device)
+            descriptors1 = torch.from_numpy(descs1).to(device)
+            descriptors2 = torch.from_numpy(descs2).to(device)
+
+            with torch.inference_mode():
+                _, indices = _matcher(
+                    descriptors1,
+                    descriptors2,
+                    KF.laf_from_center_scale_ori(keypoints1[None]),
+                    KF.laf_from_center_scale_ori(keypoints2[None]),
+                )
+            indices = indices.detach().cpu().numpy().reshape(-1, 2)
+
+            if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
+                # Get the pixel positions of the matches
+                mask1 = mask_imgs[idx1]
+                matched_kpts1 = kpts1[indices[:, 0]]
+                mask_val = mask1[
+                    matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
+                ]
+                indices = indices[mask_val == 0].copy()
+
+            if viz:
+                image1 = load_image(paths[idx1])
+                image2 = load_image(paths[idx2])
+                viz2d.plot_images([image1, image2])
+                viz2d.plot_matches(
+                    keypoints1[indices[:, 0]],
+                    keypoints2[indices[:, 1]],
+                    color="lime",
+                    lw=0.2,
+                )
+                key1_viz = paths[idx1].parts[-3] + "_" + paths[idx1].stem
+                key2_viz = paths[idx2].parts[-3] + "_" + paths[idx2].stem
+                viz2d.add_text(0, key1_viz, fs=20)
+                viz2d.add_text(1, key2_viz, fs=20)
+                viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+                plt.close()
+
+            if len(indices):
+                matched_traj_ids = np.stack(
+                    [traj_ids1[indices[:, 0]], traj_ids2[indices[:, 1]]], axis=1
+                )
+                traj_pairs.extend(matched_traj_ids.tolist())
+
+        if viz:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "12",
+                    "-i",
+                    str(viz_dir / "%*.png"),
+                    "-c:v",
+                    "libx264",
+                    str(viz_dir / "matches.mp4"),
+                ]
+            )
+            wandb.log(
+                {
+                    "Matched Trajectories": wandb.Video(
+                        str(viz_dir / "matches.mp4"), format="mp4"
+                    )
+                }
+            )
+            for img in viz_dir.glob("*.png"):
+                img.unlink()
+
+        return set(map(tuple, traj_pairs))
 
     def traj2match(
         self,
@@ -206,6 +303,7 @@ class KeypointMatcher:
             viz_dir.mkdir(parents=True, exist_ok=True)
             images = [load_image(path) for path in paths]
 
+        n_frames = len(paths) // 4
         with h5py.File(feature_dir / "matches.h5", mode="w") as f_matches:
             for idx1, idx2 in tqdm(
                 index_pairs, desc="Matching keypoints in each dynamic camera"
@@ -221,7 +319,7 @@ class KeypointMatcher:
                 indices = np.stack([idx1_of_common, idx2_of_common], axis=1)
 
                 # Mask out keypoints that are in a dynamic region
-                if self.cfg.mask:
+                if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
                     mask1 = mask_imgs[idx1]
                     matched_kpts1 = kpts1[indices[:, 0]]
                     mask_val = mask1[
@@ -260,153 +358,11 @@ class KeypointMatcher:
                     str(viz_dir / "matches.mp4"),
                 ]
             )
-
-    # def match_keypoints_traj(
-    #     self,
-    #     paths: list[Path],
-    #     kpts_per_img: dict[
-    #         int,
-    #         tuple[
-    #             Float[NDArray, "... 2"],
-    #             Float[NDArray, "... D"],
-    #             Int[NDArray, "..."],
-    #             Int[NDArray, "..."],
-    #         ],
-    #     ],
-    #     index_pairs: list[tuple[int, int]],
-    # ) -> dict[int, dict[int, tuple[np.ndarray, np.ndarray]]]:
-    #     if self.cfg.mask:
-    #         mask_imgs = [
-    #             cv2.imread(
-    #                 Path(str(path.parent).replace("images", "masks")) / path.name,
-    #                 cv2.IMREAD_GRAYSCALE,
-    #             )
-    #             for path in paths
-    #         ]
-
-    #     n_cpu = min(mp.cpu_count(), 4)
-    #     index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
-
-    #     futures = []
-    #     with ProcessPoolExecutor() as executor:
-    #         for i_proc, sub_index_pairs in enumerate(index_pairs_chunks):
-    #             future = executor.submit(
-    #                 self._keypoint_distances_traj,
-    #                 sub_index_pairs,
-    #                 mask_imgs if self.cfg.mask else None,
-    #                 kpts_per_img,
-    #                 i_proc,
-    #             )
-    #             futures.append(future)
-    #             print(f"Chunk {i_proc + 1}/{len(index_pairs_chunks)} submitted.")
-    #         result = [f.result() for f in futures]
-    #     # result = self._keypoint_distances_traj(
-    #     #     index_pairs,
-    #     #     mask_imgs if self.cfg.mask else None,
-    #     #     kpts_per_img,
-    #     #     0,
-    #     # )
-
-    #     matched_traj_ids = defaultdict(dict)
-    #     for sub_result in result:
-    #         matched_traj_ids.update(sub_result)
-    #     return matched_traj_ids
-
-    # def match_keypoints_traj(
-    #     self,
-    #     paths: list[Path],
-    #     feature_dir: Path,
-    #     index_pairs: list[tuple[int, int]],
-    #     kpts_per_img: dict[
-    #         int,
-    #         tuple[
-    #             Float[NDArray, "... 2"],
-    #             Float[NDArray, "... D"],
-    #             Int[NDArray, "..."],
-    #         ],
-    #     ],
-    #     # i_proc: int,
-    # ):
-    #     gpu_id = 0
-    #     device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
-
-    #     _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
-
-    #     if self.cfg.mask:
-    #         mask_imgs = [
-    #             torch.from_numpy(
-    #                 cv2.imread(
-    #                     Path(str(path.parent).replace("images", "masks")) / path.name,
-    #                     cv2.IMREAD_GRAYSCALE,
-    #                 )
-    #             )
-    #             for path in paths
-    #         ]
-
-    #     with h5py.File(
-    #         feature_dir / "keypoints.h5", mode="r"
-    #     ) as f_keypoints, h5py.File(
-    #         feature_dir / "descriptors.h5", mode="r"
-    #     ) as f_descriptors, h5py.File(
-    #         (feature_dir / f"matches_{i_proc}.h5"), mode="w"
-    #     ) as f_matches:
-    #         for idx1, idx2 in tqdm(
-    #             index_pairs, desc=f"Matching keypoints in the process"
-    #         ):
-    #             kpts1, desc1, _ = kpts_per_img[idx1]
-    #             kpts2, desc2, _ = kpts_per_img[idx2]
-
-    #             keypoints1 = torch.from_numpy(kpts1).to(device)
-    #             keypoints2 = torch.from_numpy(kpts2).to(device)
-    #             descriptors1 = torch.from_numpy(desc1).to(device)
-    #             descriptors2 = torch.from_numpy(desc2).to(device)
-
-    #             with torch.inference_mode():
-    #                 _, indices = _matcher(
-    #                     descriptors1,
-    #                     descriptors2,
-    #                     KF.laf_from_center_scale_ori(keypoints1[None]),
-    #                     KF.laf_from_center_scale_ori(keypoints2[None]),
-    #                 )
-
-    #             # If mask is enabled, remove the matches that are in the mask
-    #             if self.cfg.mask:
-    #                 mask_img1 = mask_imgs[idx1].to(device)
-
-    #                 # Get the pixel positions of the matches
-    #                 matched_keypoints1 = keypoints1[indices[:, 0], :2]
-
-    #                 mask1 = mask_img1[
-    #                     matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
-    #                 ]
-    #                 masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
-    #                 indices1 = torch.nonzero(
-    #                     torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
-    #                 )[0].unique()
-    #                 indices = indices[
-    #                     torch.nonzero(
-    #                         torch.isin(indices.reshape(2, -1)[0], indices1),
-    #                         as_tuple=True,
-    #                     )[0].unique(),
-    #                     :,
-    #                 ]
-
-    #             # We have matches to consider
-    #             if len(indices):
-    #                 # Leave only the trajectory that starts from the frame
-    #                 indices = indices.detach().cpu().numpy().astype(int)
-    #                 indices = indices[
-    #                     (idx_in_traj_list1[indices[:, 0]] == 0)
-    #                     # & (idx_in_traj_list2[indices[:, 1]] == 0)
-    #                 ]
-    #                 # print(f"Filtered {len(indices)} matches after filtering by start.")
-
-    #                 if len(indices) >= self.cfg.min_matches:
-    #                     # Store the matched trajectory as:  dict[frame_i][frame_j] -> (traj_id_i, traj_id_j)
-    #                     matched_traj_ids[idx1][idx2] = (
-    #                         traj_ids1[indices[:, 0]],
-    #                         traj_ids2[indices[:, 1]],
-    #                     )
+            wandb.log(
+                {"Matches": wandb.Video(str(viz_dir / "matches.mp4"), format="mp4")}
+            )
+            for img in viz_dir.glob("*.png"):
+                img.unlink()
 
     def match_keypoints_fixed(
         self,

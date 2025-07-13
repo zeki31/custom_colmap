@@ -26,6 +26,7 @@ cd build
 cmake .. -GNinja
 ninja
 sudo ninja install
+cd ../..
 
 # GLOMAP
 git clone git@github.com:colmap/glomap.git --recursive

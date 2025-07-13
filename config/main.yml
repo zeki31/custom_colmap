@@ -1,5 +1,5 @@
 defaults:
-  - matcher: sparse
+  - matcher: tracking
 
 # Assume base_dir includes "1_fixed/images", "2_dynA/images", ...
 base_dir: ../sony_ai/20250529/valid/lane/running
@@ -9,8 +9,8 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: colmap
-  name: lane_running_gpu
+  group: view_match
+  name: ours_full_fps
   mode: offline
 
 retriever:
@@ -20,7 +20,7 @@ retriever:
   duration: -1
   stride: 1
 
-  comp_ratio: 1
+  comp_ratio: 4
 
 mapper:
   name: colmap
