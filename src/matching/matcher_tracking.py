@@ -63,7 +63,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
-        print("--Merge trajectories from all dynamic cameras...")
+        print("-- Merge trajectories from all dynamic cameras...")
         track_path = feature_dir / "track.npy"
         if track_path.exists():
             print("-- Loading pre-merged trajectories...")
@@ -112,6 +112,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             "exhaustive_keyframe_excluding_same_view",
             self.cfg.tracker.window_len,
         )
+        # TODO: parallelize this step
         traj_pairs = self.matcher.match_trajectories(
             image_paths,
             index_pairs,
@@ -137,8 +138,8 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajs[root_traj_id].times.extend(traj.times)
 
         trajectories = TrajectorySet(trajs)
-        extended_track_path = feature_dir / "extended_track.npy"
-        np.save(extended_track_path, trajectories, allow_pickle=True)
+        # extended_track_path = feature_dir / "extended_track.npy"
+        # np.save(extended_track_path, trajectories, allow_pickle=True)
         trajectories.build_invert_indexes()
 
         print("-- Register keypoints again to update traj_ids...")
@@ -154,8 +155,9 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         print("4. Converting trajectories to matches...")
         print("-- Matching keypoints in each dynamic camera...")
         index_pairs = self.retriever.get_index_pairs(
-            image_paths, "frame", self.cfg.tracker.window_len
+            image_paths, "exhaustive_dynamic", self.cfg.tracker.window_len
         )
+        # TODO: parallelize this step
         self.matcher.traj2match(
             image_paths,
             feature_dir,
