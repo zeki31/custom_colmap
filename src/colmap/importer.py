@@ -27,19 +27,17 @@ class COLMAPImporter:
         db.create_tables()
 
         if matching_type == "sparse":
-            print("Importing keypoints into the database...")
             fname_to_id = add_keypoints(db, feature_dir, base_dir, "simple-pinhole")
-            # # Handle the fixed camera separately
-            # camera_id = create_camera(db, image_paths[0], "simple-pinhole")
-            # key_fixed = "-".join(image_paths[0].parts[-3:]) + "_unique"
-            # img_path = "-".join(image_paths[0].parts[-3:]).replace("-", "/")
-            # image_id = db.add_image(name=img_path, camera_id=camera_id)
-            # fname_to_id[key_fixed] = image_id
-            # keypoint_f = h5py.File((feature_dir / "keypoints.h5"), "r")
-            # keypoints_fixed = keypoint_f[key_fixed][()]
-            # db.add_keypoints(fname_to_id[key_fixed], keypoints_fixed)
+            # Handle the fixed camera separately
+            camera_id = create_camera(db, image_paths[0], "simple-pinhole")
+            key_fixed = "-".join(image_paths[0].parts[-3:]) + "_unique"
+            img_path = "-".join(image_paths[0].parts[-3:]).replace("-", "/")
+            image_id = db.add_image(name=img_path, camera_id=camera_id)
+            fname_to_id[key_fixed] = image_id
+            keypoint_f = h5py.File((feature_dir / "keypoints.h5"), "r")
+            keypoints_fixed = keypoint_f[key_fixed][()]
+            db.add_keypoints(fname_to_id[key_fixed], keypoints_fixed)
 
-            print("Importing matches into the database...")
             added = set()
             for match_file in feature_dir.glob("matches_*.h5"):
                 added = add_matches(
@@ -61,7 +59,6 @@ class COLMAPImporter:
             keypoints_fixed = keypoint_f[key_fixed][()]
             db.add_keypoints(fname_to_id[key_fixed], keypoints_fixed)
 
-            print("Importing matches into the database...")
             added = set()
             for match_file in feature_dir.glob("matches*.h5"):
                 added = add_matches(

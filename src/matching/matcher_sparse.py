@@ -40,15 +40,17 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
             cfg.keypoint_matcher, logger, paths, feature_dir, save_dir
         )
 
-    def match(
-        self,
-        image_paths: list[Path],
-        feature_dir: Path,
-    ) -> None:
+    def match(self) -> None:
         start = time()
-        self.detector.detect_keypoints(image_paths, feature_dir)
+        self.detector.detect_keypoints(
+            self.paths[len(self.paths) // 4 :], self.feature_dir
+        )
+        self.detector.detect_keypoints_fixed(
+            self.paths[: len(self.paths) // 4],
+            self.feature_dir,
+        )
         index_pairs = self.retriever.get_index_pairs(
-            image_paths, self.cfg.pair_generator
+            self.paths, self.cfg.pair_generator
         )
         _ = self.matcher.multiprocess(
             self.matcher.match_keypoints,
@@ -56,15 +58,8 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
             n_cpu=10,
             cond=(self.feature_dir / "matches_0.h5").exists(),
         )
-        # self.matcher.match_keypoints(index_pairs)
 
         torch.cuda.empty_cache()
         gc.collect()
-
-        # index_pairs_fixed = self.retriever.get_index_pairs(image_paths, "fixed")
-        # self.matcher.match_keypoints_fixed(index_pairs_fixed, image_paths, feature_dir)
-
-        # torch.cuda.empty_cache()
-        # gc.collect()
 
         self.logger.log({"Matching time (min)": (time() - start) // 60})

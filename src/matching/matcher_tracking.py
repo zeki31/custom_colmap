@@ -68,7 +68,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         self.detector.track_fixed(
             self.paths[: len(self.paths) // 4],
             feature_dir=self.feature_dir,
-            viz=True,
+            # viz=True,
         )
 
         print("Merging trajectories from all cameras...")
