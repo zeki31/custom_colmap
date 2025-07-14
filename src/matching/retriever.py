@@ -116,8 +116,11 @@ class Retriever:
 
         if pair_generator == "exhaustive_dynamic":
             # Obtains all possible index pairs only for dynamic cameras
-            dyn_cam_indices = range(len(paths) // 4, len(paths))
+            n_frames = len(paths) // 4
+            dyn_cam_indices = range(n_frames, len(paths))
             pairs = list(itertools.combinations(dyn_cam_indices, 2))
+            for t in range(n_frames):
+                pairs.extend([(0, i * n_frames + t) for i in range(1, 4)])
             print(f"Pairs among dynamic cameras: {len(pairs)}")
 
         elif pair_generator == "frame-view":
@@ -155,6 +158,9 @@ class Retriever:
             pairs = [
                 pair for pair in pairs if (pair[0] // n_frames) != (pair[1] // n_frames)
             ]
+
+            for t in range(0, n_frames, window_len):
+                pairs.extend([(0, i * n_frames + t) for i in range(1, 4)])
 
             pairs = sorted(set(pairs))  # Remove duplicates
             print(f"Keyframe pairs (excluding pairs from the same view): {len(pairs)}")

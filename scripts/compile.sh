@@ -17,6 +17,7 @@ sudo rm -rf cmake-3.28.5 cmake-3.28.5.tar.gz
 # COLMAP
 git clone https://github.com/colmap/colmap.git
 cd colmap
+git checkout 3.11.1
 # DO NOT run this command, it will cause ceres error
 # sudo apt-get install -y \
 #     nvidia-cuda-toolkit \

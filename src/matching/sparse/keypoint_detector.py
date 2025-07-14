@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
+import cv2
 import h5py
 import kornia as K
 import matplotlib.pyplot as plt
@@ -12,8 +13,9 @@ import wandb
 from jaxtyping import Float, Int
 from numpy.typing import NDArray
 from tqdm import tqdm
+from tqdm.contrib import tzip
 
-from src.matching.tracking.trajectory import TrajectorySet
+from src.matching.tracking.trajectory import Trajectory, TrajectorySet
 from src.submodules.LightGlue.lightglue import ALIKED, viz2d
 from src.submodules.LightGlue.lightglue.utils import load_image
 
@@ -177,3 +179,70 @@ class KeypointDetector:
                 img.unlink()
 
         return kpts_per_img
+
+    def track_fixed(
+        self,
+        paths: list[Path],
+        feature_dir: Path,
+        viz: bool = False,
+    ) -> None:
+        """Detects the keypoints in a list of images with ALIKED"""
+        save_dir = feature_dir / "1_fixed"
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        if (save_dir / "full_trajs.npy").exists():
+            print("Already tracked keypoints in the fixed camera, skipping.")
+            return
+
+        mask_imgs = [
+            cv2.imread(
+                Path(str(path.parent).replace("images", "masks")) / path.name,
+                cv2.IMREAD_GRAYSCALE,
+            )
+            for path in paths
+        ]
+        merged_mask = mask_imgs[0]
+        for mask in mask_imgs:
+            merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
+
+        if viz:
+            cv2.imwrite(save_dir / "mask.png", merged_mask)
+            self.logger.log(
+                {
+                    "Merged Mask": wandb.Image(
+                        save_dir / "mask.png",
+                    )
+                }
+            )
+
+        with torch.inference_mode():
+            image = self._load_torch_image(paths[0], device=self.device).to(self.dtype)
+            features = self.extractor.extract(image)
+
+            kpts = features["keypoints"].squeeze().detach().cpu().numpy()
+            descs = features["descriptors"].squeeze().detach().cpu().numpy()
+            masked_idx = np.where(
+                merged_mask[kpts[:, 1].astype(int), kpts[:, 0].astype(int)] == 0
+            )[0]
+            kpts_masked = kpts[masked_idx]
+            descs_masked = descs[masked_idx]
+
+            if viz:
+                viz2d.plot_images([load_image(paths[0])])
+                viz2d.plot_keypoints([kpts_masked], ps=10)
+                viz2d.add_text(0, paths[0].parts[-3] + "_" + paths[0].name)
+                viz2d.save_plot(save_dir / "kpts.png")
+                plt.close()
+                self.logger.log(
+                    {
+                        "Keypoints Fixed": wandb.Image(
+                            save_dir / "kpts.png",
+                        )
+                    }
+                )
+
+        full_trajs = []
+        for kpts, descs in tzip(kpts_masked, descs_masked):
+            traj = Trajectory(0, kpts, descs)
+            full_trajs.append(traj)
+        np.save(save_dir / "full_trajs.npy", full_trajs)

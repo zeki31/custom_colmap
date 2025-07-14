@@ -10,7 +10,7 @@ wandb:
   entity: zeki31-global-page
   project: custom_colmap
   group: add_fixed
-  name: ours_debug
+  name: ours_track_fixed_th=0.5
   mode: offline
 
 retriever:
