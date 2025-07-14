@@ -47,7 +47,7 @@ class KeypointMatcher:
             "width_confidence": -1,
             "depth_confidence": -1,
             "mp": True,
-            "filter_threshold": 0.5,
+            # "filter_threshold": 0.5,
         }
 
         if self.cfg.mask:
