@@ -36,26 +36,29 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
         paths: list[Path],
+        feature_dir: Path,
         save_dir: Path,
         retriever: Retriever,
     ):
-        super().__init__(cfg, logger, device, paths, save_dir, retriever)
+        super().__init__(cfg, logger, device, paths, feature_dir, save_dir, retriever)
 
         self.tracker = Tracker(cfg.tracker, logger, save_dir)
         self.detector = KeypointDetector(
             cfg.keypoint_detector, logger, device, save_dir
         )
-        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger, paths, save_dir)
+        self.matcher = KeypointMatcher(
+            cfg.keypoint_matcher, logger, paths, feature_dir, save_dir
+        )
 
-    def match(self, image_paths: list[Path], feature_dir: Path) -> None:
+    def match(self) -> None:
         """Track points over frames in dynamic cameras and match keypoints in a fixed camera."""
-        if (feature_dir / "matches.h5").exists():
+        if (self.feature_dir / "matches.h5").exists():
             print("Already matched keypoints, skipping.")
             return
 
         start = time()
 
-        self.tracker.track(image_paths, feature_dir)
+        self.tracker.track(self.paths, self.feature_dir)
         lap_tracking = time()
         print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
         self.logger.summary["Tracking time (min)"] = (lap_tracking - start) // 60
@@ -63,16 +66,16 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         gc.collect()
 
         self.detector.track_fixed(
-            image_paths[: len(image_paths) // 4],
-            feature_dir=feature_dir,
-            viz=True,
+            self.paths[: len(self.paths) // 4],
+            feature_dir=self.feature_dir,
+            # viz=True,
         )
 
         print("Merging trajectories from all cameras...")
         full_trajs = []
         for cam_name in ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]:
             trajs = np.load(
-                feature_dir / cam_name / "full_trajs.npy", allow_pickle=True
+                self.feature_dir / cam_name / "full_trajs.npy", allow_pickle=True
             )
             full_trajs.extend(trajs)
         # Build TrajectorySet
@@ -83,8 +86,8 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         trajectories.build_invert_indexes()
 
         kpts_per_img = self.detector.register_keypoints(
-            image_paths,
-            feature_dir,
+            self.paths,
+            self.feature_dir,
             trajectories,
             self.tracker.cfg.query,
             # viz=True,
@@ -93,17 +96,18 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         gc.collect()
 
         index_pairs = self.retriever.get_index_pairs(
-            image_paths,
+            self.paths,
             "exhaustive_keyframe_excluding_same_view",
             self.cfg.tracker.window_len,
         )
-        # TODO: parallelize this step
-        traj_pairs = self.matcher.match_trajectories(
-            image_paths,
+        traj_pairs_list = self.matcher.multiprocess(
+            self.matcher.match_trajectories,
             index_pairs,
+            10,
+            (self.feature_dir / "matches_0.h5").exists(),
             kpts_per_img,
-            # viz=True,
         )
+        traj_pairs = {pair for pairs_set in traj_pairs_list for pair in pairs_set}
         torch.cuda.empty_cache()
         gc.collect()
 
@@ -124,23 +128,22 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
 
         print("Register keypoints again to update traj_ids...")
         kpts_per_img = self.detector.register_keypoints(
-            image_paths,
-            feature_dir,
+            self.paths,
+            self.feature_dir,
             trajectories,
             self.tracker.cfg.query,
             # viz=True,
         )
         gc.collect()
         index_pairs = self.retriever.get_index_pairs(
-            image_paths, "exhaustive_dynamic", self.cfg.tracker.window_len
+            self.paths, "exhaustive_dynamic", self.cfg.tracker.window_len
         )
-        # TODO: parallelize this step
-        self.matcher.traj2match(
-            image_paths,
-            feature_dir,
+        _ = self.matcher.multiprocess(
+            self.matcher.traj2match,
             index_pairs,
+            10,
+            (self.feature_dir / "matches_0.h5").exists(),
             kpts_per_img,
-            # viz=True,
         )
         gc.collect()
 

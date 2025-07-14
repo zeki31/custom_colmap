@@ -88,6 +88,45 @@ class KeypointDetector:
                         features["descriptors"].squeeze().detach().cpu().numpy()
                     )
 
+    def detect_keypoints_fixed(
+        self,
+        paths: list[Path],
+        feature_dir: Path,
+    ) -> None:
+        mask_imgs = [
+            cv2.imread(
+                Path(str(path.parent).replace("images", "masks")) / path.name,
+                cv2.IMREAD_GRAYSCALE,
+            )
+            for path in paths
+        ]
+        merged_mask = mask_imgs[0]
+        for mask in mask_imgs:
+            merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
+
+        with h5py.File(
+            feature_dir / "keypoints.h5", mode="r+"
+        ) as f_keypoints, h5py.File(
+            feature_dir / "descriptors.h5", mode="r+"
+        ) as f_descriptors:
+            for path in tqdm(paths, desc="Computing keypoints"):
+                key = "-".join(path.parts[-3:])
+
+            with torch.inference_mode():
+                image = self._load_torch_image(paths[0], device=self.device).to(
+                    self.dtype
+                )
+                features = self.extractor.extract(image)
+
+                kpts = features["keypoints"].squeeze().detach().cpu().numpy()
+                descs = features["descriptors"].squeeze().detach().cpu().numpy()
+                masked_idx = np.where(
+                    merged_mask[kpts[:, 1].astype(int), kpts[:, 0].astype(int)] == 0
+                )[0]
+
+                f_keypoints[key] = kpts[masked_idx]
+                f_descriptors[key] = descs[masked_idx]
+
     def register_keypoints(
         self,
         paths: list[Path],
