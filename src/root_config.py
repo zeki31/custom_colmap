@@ -17,6 +17,7 @@ class WandbCfg:
     project: str
     name: str
     group: str
+    id: Optional[str]
     mode: Literal["online", "offline", "disabled"]
 
 

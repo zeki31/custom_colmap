@@ -47,7 +47,9 @@ def main():
         dir=save_dir,
         config=cfg.to_dict(),
         group=cfg.wandb.group,
+        id=cfg.wandb.id,
         mode=cfg.wandb.mode,
+        resume="allow",
     ) as logger:
         retriever = Retriever(cfg.retriever, logger)
         image_paths = retriever.get_image_paths(cfg.base_dir)

@@ -11,6 +11,7 @@ wandb:
   project: custom_colmap
   group: main
   name: ours
+  id: null
   mode: online
 
 retriever:
