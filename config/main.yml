@@ -9,8 +9,8 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: view_match
-  name: ours_full_fps
+  group: masking_before_matching
+  name: ours_debug
   mode: offline
 
 retriever:
@@ -18,7 +18,7 @@ retriever:
   ext: jpg
   start: 0
   duration: -1
-  stride: 1
+  stride: 5
 
   comp_ratio: 4
 

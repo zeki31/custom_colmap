@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
-from jaxtyping import Float, Int
+from jaxtyping import Float, Int, UInt
 from numpy.typing import NDArray
 from tqdm import tqdm
 
@@ -34,10 +34,12 @@ class KeypointMatcher:
         self,
         cfg: KeypointMatcherCfg,
         logger: wandb.sdk.wandb_run.Run,
+        paths: list[Path],
         save_dir: Path,
     ):
         self.cfg = cfg
         self.logger = logger
+        self.paths = paths
         self.save_dir = save_dir
 
         self.matcher_params = {
@@ -45,6 +47,15 @@ class KeypointMatcher:
             "depth_confidence": -1,
             "mp": True,
         }
+
+        if self.cfg.mask:
+            self.mask_imgs = [
+                cv2.imread(
+                    Path(str(path.parent).replace("images", "masks")) / path.name,
+                    cv2.IMREAD_GRAYSCALE,
+                )
+                for path in paths
+            ]
 
     def _chunkify(
         self,
@@ -55,6 +66,43 @@ class KeypointMatcher:
         print(f"Chunking pairs into {n_cpu} chunks.")
         chunk_size = len(pairs) // n_cpu + 1
         return [pairs[i : i + chunk_size] for i in range(0, len(pairs), chunk_size)]
+
+    def _masking(
+        self,
+        mask_img1: UInt[NDArray, "H W"],
+        mask_img2: UInt[NDArray, "H W"],
+        kpts1: Float[NDArray, "... 2"],
+        kpts2: Float[NDArray, "... 2"],
+        descs1: Float[NDArray, "... 128"],
+        descs2: Float[NDArray, "... 128"],
+    ) -> tuple[
+        Float[NDArray, "... 2"],
+        Float[NDArray, "... 2"],
+        Float[NDArray, "... 128"],
+        Float[NDArray, "... 128"],
+        Int[NDArray, "..."],
+        Int[NDArray, "..."],
+    ]:
+        """Apply masks to keypoints and descriptors"""
+        keep_idx1 = np.where(
+            mask_img1[kpts1[:, 1].astype(int), kpts1[:, 0].astype(int)] == 0
+        )[0]
+        keep_idx2 = np.where(
+            mask_img2[kpts2[:, 1].astype(int), kpts2[:, 0].astype(int)] == 0
+        )[0]
+        kpts1_masked = kpts1[keep_idx1]
+        kpts2_masked = kpts2[keep_idx2]
+        descs1_masked = descs1[keep_idx1]
+        descs2_masked = descs2[keep_idx2]
+
+        return (
+            kpts1_masked,
+            kpts2_masked,
+            descs1_masked,
+            descs2_masked,
+            keep_idx1,
+            keep_idx2,
+        )
 
     def match_keypoints(
         self,
@@ -69,15 +117,6 @@ class KeypointMatcher:
         if (feature_dir / "matches_0.h5").exists():
             return
 
-        if self.cfg.mask:
-            mask_imgs = [
-                cv2.imread(
-                    Path(str(path.parent).replace("images", "masks")) / path.name,
-                    cv2.IMREAD_GRAYSCALE,
-                )
-                for path in paths
-            ]
-
         n_cpu = min(mp.cpu_count(), 12)
         index_pairs_chunks = self._chunkify(index_pairs, n_cpu)
 
@@ -88,7 +127,6 @@ class KeypointMatcher:
                     self._keypoint_distances,
                     sub_index_pairs,
                     paths,
-                    mask_imgs if self.cfg.mask else None,
                     feature_dir,
                     i_proc,
                 )
@@ -100,7 +138,6 @@ class KeypointMatcher:
         self,
         index_pairs: list[tuple[int, int]],
         paths: list[Path],
-        mask_imgs: list[NDArray] | None,
         feature_dir: Path,
         i_proc: int,
     ):
@@ -124,10 +161,26 @@ class KeypointMatcher:
                 key1 = "-".join(paths[idx1].parts[-3:])
                 key2 = "-".join(paths[idx2].parts[-3:])
 
-                keypoints1 = torch.from_numpy(f_keypoints[key1][...]).to(device)
-                keypoints2 = torch.from_numpy(f_keypoints[key2][...]).to(device)
-                descriptors1 = torch.from_numpy(f_descriptors[key1][...]).to(device)
-                descriptors2 = torch.from_numpy(f_descriptors[key2][...]).to(device)
+                kpts1 = f_keypoints[key1][...]
+                kpts2 = f_keypoints[key2][...]
+                descs1 = f_descriptors[key1][...]
+                descs2 = f_descriptors[key2][...]
+
+                # Mask out keypoints in dynamic region before matching
+                if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
+                    kpts1, kpts2, descs1, descs2, keep_idx1, keep_idx2 = self._masking(
+                        self.mask_imgs[idx1],
+                        self.mask_imgs[idx2],
+                        kpts1,
+                        kpts2,
+                        descs1,
+                        descs2,
+                    )
+
+                keypoints1 = torch.from_numpy(kpts1).to(device)
+                keypoints2 = torch.from_numpy(kpts2).to(device)
+                descriptors1 = torch.from_numpy(descs1).to(device)
+                descriptors2 = torch.from_numpy(descs2).to(device)
 
                 with torch.inference_mode():
                     _, indices = _matcher(
@@ -137,15 +190,14 @@ class KeypointMatcher:
                         KF.laf_from_center_scale_ori(keypoints2[None]),
                     )
                 indices = indices.detach().cpu().numpy().reshape(-1, 2)
-
                 if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
-                    # Get the pixel positions of the matches
-                    mask1 = mask_imgs[idx1]
-                    matched_kpts1 = f_keypoints[key1][...][indices[:, 0]]
-                    mask_val = mask1[
-                        matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
-                    ]
-                    indices = indices[mask_val == 0].copy()
+                    indices = np.stack(
+                        [
+                            keep_idx1[indices[:, 0]],
+                            keep_idx2[indices[:, 1]],
+                        ],
+                        axis=1,
+                    )
 
                 # We have matches to consider
                 n_matches = len(indices)
@@ -176,15 +228,6 @@ class KeypointMatcher:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
 
-        if self.cfg.mask:
-            mask_imgs = [
-                cv2.imread(
-                    Path(str(path.parent).replace("images", "masks")) / path.name,
-                    cv2.IMREAD_GRAYSCALE,
-                )
-                for path in paths
-            ]
-
         if viz:
             viz_dir = self.save_dir / "matched_trajs_viz"
             viz_dir.mkdir(parents=True, exist_ok=True)
@@ -196,6 +239,17 @@ class KeypointMatcher:
         ):
             kpts1, descs1, traj_ids1 = kpts_per_img[idx1]
             kpts2, descs2, traj_ids2 = kpts_per_img[idx2]
+
+            # Mask out keypoints in dynamic region before matching
+            if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
+                kpts1, kpts2, descs1, descs2, keep_idx1, keep_idx2 = self._masking(
+                    self.mask_imgs[idx1],
+                    self.mask_imgs[idx2],
+                    kpts1,
+                    kpts2,
+                    descs1,
+                    descs2,
+                )
 
             keypoints1 = torch.from_numpy(kpts1).to(device)
             keypoints2 = torch.from_numpy(kpts2).to(device)
@@ -210,15 +264,14 @@ class KeypointMatcher:
                     KF.laf_from_center_scale_ori(keypoints2[None]),
                 )
             indices = indices.detach().cpu().numpy().reshape(-1, 2)
-
             if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
-                # Get the pixel positions of the matches
-                mask1 = mask_imgs[idx1]
-                matched_kpts1 = kpts1[indices[:, 0]]
-                mask_val = mask1[
-                    matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
-                ]
-                indices = indices[mask_val == 0].copy()
+                indices = np.stack(
+                    [
+                        keep_idx1[indices[:, 0]],
+                        keep_idx2[indices[:, 1]],
+                    ],
+                    axis=1,
+                )
 
             if viz:
                 image1 = load_image(paths[idx1])
@@ -289,15 +342,6 @@ class KeypointMatcher:
             print("\t Trajectories are already matched, skipping.")
             return
 
-        if self.cfg.mask:
-            mask_imgs = [
-                cv2.imread(
-                    Path(str(path.parent).replace("images", "masks")) / path.name,
-                    cv2.IMREAD_GRAYSCALE,
-                )
-                for path in paths
-            ]
-
         if viz:
             viz_dir = self.save_dir / "matches_viz"
             viz_dir.mkdir(parents=True, exist_ok=True)
@@ -306,7 +350,7 @@ class KeypointMatcher:
         n_frames = len(paths) // 4
         with h5py.File(feature_dir / "matches.h5", mode="w") as f_matches:
             for idx1, idx2 in tqdm(
-                index_pairs, desc="Matching keypoints in each dynamic camera"
+                index_pairs, desc="Converting trajectories to matches"
             ):
                 key1 = "-".join(paths[idx1].parts[-3:])
                 key2 = "-".join(paths[idx2].parts[-3:])
@@ -320,12 +364,17 @@ class KeypointMatcher:
 
                 # Mask out keypoints that are in a dynamic region
                 if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
-                    mask1 = mask_imgs[idx1]
-                    matched_kpts1 = kpts1[indices[:, 0]]
-                    mask_val = mask1[
-                        matched_kpts1[:, 1].astype(int), matched_kpts1[:, 0].astype(int)
+                    mask1 = self.mask_imgs[idx1]
+                    mask2 = self.mask_imgs[idx2]
+                    m_kpts1 = kpts1[indices[:, 0]]
+                    m_kpts2 = kpts2[indices[:, 1]]
+                    mask_val1 = mask1[
+                        m_kpts1[:, 1].astype(int), m_kpts1[:, 0].astype(int)
                     ]
-                    indices = indices[mask_val == 0].copy()
+                    mask_val2 = mask2[
+                        m_kpts2[:, 1].astype(int), m_kpts2[:, 0].astype(int)
+                    ]
+                    indices = indices[(mask_val1 == 0) & (mask_val2 == 0)].copy()
 
                 if viz:
                     image1 = images[idx1]
