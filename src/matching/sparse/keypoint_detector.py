@@ -65,9 +65,6 @@ class KeypointDetector:
         Stores them in feature_dir/keypoints.h5 and feature_dir/descriptors.h5
         to be used later with LightGlue
         """
-        if (feature_dir / "descriptors.h5").exists():
-            return
-
         with h5py.File(
             feature_dir / "keypoints.h5", mode=mode
         ) as f_keypoints, h5py.File(

@@ -9,7 +9,7 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: masking_before_matching
+  group: add_fixed
   name: ours_debug
   mode: offline
 

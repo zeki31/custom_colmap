@@ -83,12 +83,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.tracker.cfg.query,
             # viz=True,
         )
-        # print("-- Register keypoints in a fixed camera...")
-        # self.detector.detect_keypoints(
-        #     image_paths[: len(image_paths) // 4],
-        #     feature_dir=feature_dir,
-        #     mode="r+",
-        # )
         torch.cuda.empty_cache()
         gc.collect()
 
@@ -143,14 +137,21 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             # viz=True,
         )
         gc.collect()
-        # print("2. Matching keypoints in the fixed camera...")
-        # index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
-        # self.matcher.match_keypoints_fixed(
-        #     index_pairs,
-        #     image_paths,
-        #     feature_dir,
-        #     # viz=True,
-        # )
+
+        # Handle fixed camera separately
+        print("Register keypoints in a fixed camera...")
+        self.detector.detect_keypoints(
+            image_paths[: len(image_paths) // 4],
+            feature_dir=feature_dir,
+            mode="r+",
+        )
+        index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
+        self.matcher.match_keypoints_fixed(
+            index_pairs,
+            image_paths,
+            feature_dir,
+            viz=True,
+        )
         torch.cuda.empty_cache()
         gc.collect()
 
