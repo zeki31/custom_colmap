@@ -109,9 +109,7 @@ class KeypointDetector:
         ) as f_keypoints, h5py.File(
             feature_dir / "descriptors.h5", mode="r+"
         ) as f_descriptors:
-            for path in tqdm(paths, desc="Computing keypoints"):
-                key = "-".join(path.parts[-3:])
-
+            key = "-".join(paths[0].parts[-3:])
             with torch.inference_mode():
                 image = self._load_torch_image(paths[0], device=self.device).to(
                     self.dtype
