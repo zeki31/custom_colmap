@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
+import cv2
 import wandb
 from tqdm.contrib import tenumerate
 
@@ -67,11 +68,11 @@ class Retriever:
             return image_paths
 
         image_paths_resized = self._resize_imgs(image_paths, "images")
-        # mask_paths = [
-        #     Path(str(path.parent).replace("images", "masks")) / path.name
-        #     for path in image_paths
-        # ]
-        # # _ = self._resize_imgs(mask_paths, "masks")
+        mask_paths = [
+            Path(str(path.parent).replace("images", "masks")) / path.name
+            for path in image_paths
+        ]
+        _ = self._resize_imgs(mask_paths, "masks")
 
         return image_paths_resized
 
@@ -86,20 +87,20 @@ class Retriever:
                 resized_dir = img_path.parents[1] / f"{label}_resized"
                 resized_dir.mkdir(parents=True, exist_ok=True)
 
-            # if label == "masks":
-            #     img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            # else:
-            #     img = cv2.imread(img_path)
-            # img_resized = cv2.resize(
-            #     img.copy(),
-            #     (
-            #         img.shape[1] // self.cfg.comp_ratio,
-            #         img.shape[0] // self.cfg.comp_ratio,
-            #     ),
-            # )
+            if label == "masks":
+                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            else:
+                img = cv2.imread(img_path)
+            img_resized = cv2.resize(
+                img.copy(),
+                (
+                    img.shape[1] // self.cfg.comp_ratio,
+                    img.shape[0] // self.cfg.comp_ratio,
+                ),
+            )
 
             img_path_resized = resized_dir / img_path.name
-            # cv2.imwrite(img_path_resized, img_resized)
+            cv2.imwrite(img_path_resized, img_resized)
             image_paths_resized.append(img_path_resized)
 
         return image_paths_resized
