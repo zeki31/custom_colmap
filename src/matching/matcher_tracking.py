@@ -62,9 +62,15 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
+        self.detector.track_fixed(
+            image_paths[: len(image_paths) // 4],
+            feature_dir=feature_dir,
+            viz=True,
+        )
+
         print("Merging trajectories from all cameras...")
         full_trajs = []
-        for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
+        for cam_name in ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]:
             trajs = np.load(
                 feature_dir / cam_name / "full_trajs.npy", allow_pickle=True
             )
@@ -83,12 +89,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.tracker.cfg.query,
             # viz=True,
         )
-        # print("-- Register keypoints in a fixed camera...")
-        # self.detector.detect_keypoints(
-        #     image_paths[: len(image_paths) // 4],
-        #     feature_dir=feature_dir,
-        #     mode="r+",
-        # )
         torch.cuda.empty_cache()
         gc.collect()
 
@@ -142,16 +142,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             kpts_per_img,
             # viz=True,
         )
-        gc.collect()
-        # print("2. Matching keypoints in the fixed camera...")
-        # index_pairs = self.retriever.get_index_pairs(image_paths, "fixed")
-        # self.matcher.match_keypoints_fixed(
-        #     index_pairs,
-        #     image_paths,
-        #     feature_dir,
-        #     # viz=True,
-        # )
-        torch.cuda.empty_cache()
         gc.collect()
 
         end = time()

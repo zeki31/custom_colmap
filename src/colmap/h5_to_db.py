@@ -75,7 +75,7 @@ def add_keypoints(
 
     camera_id = None
     fname_to_id = {}
-    for key in tqdm(list(keypoint_f.keys())):
+    for key in tqdm(list(keypoint_f.keys()), desc="Adding keypoints"):
         keypoints = keypoint_f[key][()]
         if "fixed" in key:
             continue  # skip fixed keypoints
@@ -106,7 +106,7 @@ def add_matches(
     n_keys = len(match_file.keys())
     n_total = (n_keys * (n_keys - 1)) // 2
 
-    with tqdm(total=n_total) as pbar:
+    with tqdm(total=n_total, desc="Adding matches") as pbar:
         for key_1 in match_file.keys():
             group = match_file[key_1]
             for key_2 in group.keys():

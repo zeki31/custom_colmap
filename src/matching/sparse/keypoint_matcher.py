@@ -15,6 +15,7 @@ import wandb
 from jaxtyping import Float, Int, UInt
 from numpy.typing import NDArray
 from tqdm import tqdm
+from tqdm.contrib import tzip
 
 from src.submodules.LightGlue.lightglue import viz2d
 from src.submodules.LightGlue.lightglue.utils import load_image
@@ -46,6 +47,7 @@ class KeypointMatcher:
             "width_confidence": -1,
             "depth_confidence": -1,
             "mp": True,
+            "filter_threshold": 0.5,
         }
 
         if self.cfg.mask:
@@ -430,17 +432,6 @@ class KeypointMatcher:
 
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(_device)
 
-        if self.cfg.mask:
-            mask_imgs = [
-                torch.from_numpy(
-                    cv2.imread(
-                        Path(str(path.parent).replace("images", "masks")) / path.name,
-                        cv2.IMREAD_GRAYSCALE,
-                    )
-                )
-                for path in paths
-            ]
-
         if viz:
             viz_dir = self.save_dir / "matches_fixed_viz"
             viz_dir.mkdir(parents=True, exist_ok=True)
@@ -449,6 +440,8 @@ class KeypointMatcher:
         indices_all = []
         kpts1_all = []
         key2_all = []
+        idx2_all = []
+        n_frames = len(paths) // 4
         with h5py.File(
             feature_dir / "keypoints.h5", mode="r+"
         ) as f_keypoints, h5py.File(
@@ -462,10 +455,25 @@ class KeypointMatcher:
                 key1 = "-".join(paths[idx1].parts[-3:])
                 key2 = "-".join(paths[idx2].parts[-3:])
 
-                keypoints1 = torch.from_numpy(f_keypoints[key1][...]).to(_device)
-                keypoints2 = torch.from_numpy(f_keypoints[key2][...]).to(_device)
-                descriptors1 = torch.from_numpy(f_descriptors[key1][...]).to(_device)
-                descriptors2 = torch.from_numpy(f_descriptors[key2][...]).to(_device)
+                kpts1 = f_keypoints[key1][...]
+                kpts2 = f_keypoints[key2][...]
+                descs1 = f_descriptors[key1][...]
+                descs2 = f_descriptors[key2][...]
+
+                if self.cfg.mask:
+                    kpts1, kpts2, descs1, descs2, keep_idx1, keep_idx2 = self._masking(
+                        self.mask_imgs[idx1],
+                        self.mask_imgs[idx2],
+                        kpts1,
+                        kpts2,
+                        descs1,
+                        descs2,
+                    )
+
+                keypoints1 = torch.from_numpy(kpts1).to(_device)
+                keypoints2 = torch.from_numpy(kpts2).to(_device)
+                descriptors1 = torch.from_numpy(descs1).to(_device)
+                descriptors2 = torch.from_numpy(descs2).to(_device)
 
                 # print(key1, key2,
                 #       max(keypoints1[:, 0]), max(keypoints1[:, 1]),
@@ -480,32 +488,20 @@ class KeypointMatcher:
                         KF.laf_from_center_scale_ori(keypoints1[None]),
                         KF.laf_from_center_scale_ori(keypoints2[None]),
                     )
+                indices = indices.detach().cpu().numpy().reshape(-1, 2)
+                if self.cfg.mask and idx1 % n_frames != idx2 % n_frames:
+                    indices = np.stack(
+                        [
+                            keep_idx1[indices[:, 0]],
+                            keep_idx2[indices[:, 1]],
+                        ],
+                        axis=1,
+                    )
 
-                # If mask is enabled, remove the matches that are in the mask
-                if self.cfg.mask:
-                    mask_img1 = mask_imgs[idx1].to(_device)
-
-                    # Get the pixel positions of the matches
-                    matched_keypoints1 = keypoints1[indices[:, 0], :2]
-
-                    mask1 = mask_img1[
-                        matched_keypoints1[:, 1].long(), matched_keypoints1[:, 0].long()
-                    ]
-                    masked_matched_keypoints1 = matched_keypoints1[mask1 == 0]
-                    indices1 = torch.nonzero(
-                        torch.isin(keypoints1, masked_matched_keypoints1), as_tuple=True
-                    )[0].unique()
-                    indices = indices[
-                        torch.nonzero(
-                            torch.isin(indices.reshape(2, -1)[0], indices1),
-                            as_tuple=True,
-                        )[0].unique(),
-                        :,
-                    ]
-
-                indices_all.append(indices.detach().cpu().numpy())
-                kpts1_all.append(keypoints1.detach().cpu().numpy())
+                indices_all.append(indices)
+                kpts1_all.append(kpts1)
                 key2_all.append(key2)
+                idx2_all.append(idx2)
 
             kpts1_all_stacked = np.vstack(kpts1_all.copy())  # shape (N_total, 2)
             kpts1_unique, inverse_indices = np.unique(
@@ -517,10 +513,30 @@ class KeypointMatcher:
             key1 = "-".join(paths[0].parts[-3:]) + "_unique"
             f_keypoints[key1] = kpts1_unique
             start_idx = 0
-            for kpts1, indices, key2 in zip(kpts1_all, indices_all, key2_all):
+            for kpts1, indices, key2, idx2 in tzip(
+                kpts1_all, indices_all, key2_all, idx2_all
+            ):
                 idx1_global = indices[:, 0] + start_idx
                 indices[:, 0] = inverse_indices[idx1_global]
                 start_idx += len(kpts1)
+
+                if viz:
+                    kpts2_viz = f_keypoints[key2][...]
+                    image1 = load_image(paths[0])
+                    image2 = load_image(paths[idx2])
+                    viz2d.plot_images([image1, image2])
+                    viz2d.plot_matches(
+                        kpts1_unique[indices[:, 0]],
+                        kpts2_viz[indices[:, 1]],
+                        color="lime",
+                        lw=0.2,
+                    )
+                    key1_viz = paths[0].parts[-3] + "_" + paths[0].stem
+                    key2_viz = paths[idx2].parts[-3] + "_" + paths[idx2].stem
+                    viz2d.add_text(0, key1_viz, fs=20)
+                    viz2d.add_text(1, key2_viz, fs=20)
+                    viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+                    plt.close()
 
                 # We have matches to consider
                 n_matches = len(indices)
@@ -528,3 +544,27 @@ class KeypointMatcher:
                 if n_matches >= self.cfg.min_matches:
                     group = f_matches.require_group(key1)
                     group.create_dataset(key2, data=indices.reshape(-1, 2))
+
+        if viz:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-framerate",
+                    "12",
+                    "-i",
+                    str(viz_dir / "%*.png"),
+                    "-c:v",
+                    "libx264",
+                    str(viz_dir / "matches_fixed.mp4"),
+                ]
+            )
+            wandb.log(
+                {
+                    "Matches Fixed": wandb.Video(
+                        str(viz_dir / "matches_fixed.mp4"), format="mp4"
+                    )
+                }
+            )
+            for img in viz_dir.glob("*.png"):
+                img.unlink()
