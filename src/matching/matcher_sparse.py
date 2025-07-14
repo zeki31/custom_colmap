@@ -28,14 +28,17 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
         paths: list[Path],
+        feature_dir: Path,
         save_dir: Path,
         retriever: Retriever,
     ):
-        super().__init__(cfg, logger, device, paths, save_dir, retriever)
+        super().__init__(cfg, logger, device, paths, feature_dir, save_dir, retriever)
         self.detector = KeypointDetector(
             cfg.keypoint_detector, logger, device, save_dir
         )
-        self.matcher = KeypointMatcher(cfg.keypoint_matcher, logger, paths, save_dir)
+        self.matcher = KeypointMatcher(
+            cfg.keypoint_matcher, logger, paths, feature_dir, save_dir
+        )
 
     def match(
         self,
@@ -47,7 +50,13 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         index_pairs = self.retriever.get_index_pairs(
             image_paths, self.cfg.pair_generator
         )
-        self.matcher.match_keypoints(image_paths, feature_dir, index_pairs)
+        _ = self.matcher.multiprocess(
+            self.matcher.match_keypoints,
+            index_pairs,
+            n_cpu=10,
+            cond=(self.feature_dir / "matches_0.h5").exists(),
+        )
+        # self.matcher.match_keypoints(index_pairs)
 
         torch.cuda.empty_cache()
         gc.collect()

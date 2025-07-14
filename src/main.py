@@ -53,9 +53,9 @@ def main():
         image_paths = retriever.get_image_paths(cfg.base_dir)
 
         matcher = get_matcher(
-            cfg.matcher, logger, device, image_paths, save_dir, retriever
+            cfg.matcher, logger, device, image_paths, feature_dir, save_dir, retriever
         )
-        matcher.match(image_paths, feature_dir)
+        matcher.match()
         gc.collect()
 
         # Import keypoint distances of matches into colmap for RANSAC

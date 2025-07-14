@@ -17,6 +17,7 @@ class Matcher(ABC, Generic[T]):
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
         paths: list[Path],
+        feature_dir: Path,
         save_dir: Path,
         retriever: Retriever,
     ) -> None:
@@ -25,9 +26,10 @@ class Matcher(ABC, Generic[T]):
         self.logger = logger
         self.device = device
         self.paths = paths
+        self.feature_dir = feature_dir
         self.save_dir = save_dir
         self.retriever = retriever
 
     @abstractmethod
-    def match(self, image_paths: list[Path], feature_dir: Path) -> None:
+    def match(self) -> None:
         pass
