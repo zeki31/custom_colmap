@@ -30,7 +30,7 @@ class COLMAPImporter:
             fname_to_id = add_keypoints(db, feature_dir, base_dir, "simple-pinhole")
             # Handle the fixed camera separately
             camera_id = create_camera(db, image_paths[0], "simple-pinhole")
-            key_fixed = "-".join(image_paths[0].parts[-3:]) + "_unique"
+            key_fixed = "-".join(image_paths[0].parts[-3:])
             img_path = "-".join(image_paths[0].parts[-3:]).replace("-", "/")
             image_id = db.add_image(name=img_path, camera_id=camera_id)
             fname_to_id[key_fixed] = image_id
