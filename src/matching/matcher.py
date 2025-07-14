@@ -16,6 +16,7 @@ class Matcher(ABC, Generic[T]):
         cfg: T,
         logger: wandb.sdk.wandb_run.Run,
         device: torch.device,
+        paths: list[Path],
         save_dir: Path,
         retriever: Retriever,
     ) -> None:
@@ -23,6 +24,7 @@ class Matcher(ABC, Generic[T]):
         self.cfg = cfg
         self.logger = logger
         self.device = device
+        self.paths = paths
         self.save_dir = save_dir
         self.retriever = retriever
 
