@@ -7,6 +7,7 @@ tracker:
   sample_ratio: 6
   overlap: 1
   query: aliked
+  num_features: 4096
   viz: false
 
 keypoint_detector:

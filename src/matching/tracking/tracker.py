@@ -26,6 +26,7 @@ class TrackerCfg:
     traj_min_len: int = 2
     overlap: int = 2
     query: Literal["grid", "aliked"] = "grid"
+    num_features: int = 4096
     viz: bool = False
 
 
@@ -86,6 +87,7 @@ class Tracker:
             device,
             image_paths[0],
             self.cfg.query,
+            self.cfg.num_features,
         )
 
         point_tracker = CoTrackerPredictor(

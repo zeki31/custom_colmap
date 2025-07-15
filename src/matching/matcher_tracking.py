@@ -103,7 +103,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         traj_pairs_list = self.matcher.multiprocess(
             self.matcher.match_trajectories,
             index_pairs,
-            10,
+            4,
             (self.feature_dir / "matches_0.h5").exists(),
             kpts_per_img,
         )
@@ -141,7 +141,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         _ = self.matcher.multiprocess(
             self.matcher.traj2match,
             index_pairs,
-            10,
+            4,
             (self.feature_dir / "matches_0.h5").exists(),
             kpts_per_img,
         )

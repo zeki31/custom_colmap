@@ -62,6 +62,7 @@ class IncrementalTrajectorySet(object):
         device: torch.device,
         init_frame_path: Path,
         query: Literal["grid", "aliked"],
+        num_features: int,
     ):
         self.total_length = total_length
         self.ratio = sample_ratio
@@ -69,12 +70,13 @@ class IncrementalTrajectorySet(object):
         self.active_trajs = []
         self.full_trajs = []
         self.query = query
+        self.num_features = num_features
 
         self.device = device
         self.dtype = torch.float32  # ALIKED has issues with float16
         self.extractor = (
             ALIKED(
-                max_num_keypoints=4096,
+                max_num_keypoints=self.num_features,
                 detection_threshold=0.01,
                 # resize=1024,
             )
@@ -242,9 +244,8 @@ class IncrementalTrajectorySet(object):
             # print(f"Active points: {active_pts.shape}, Non-active candidates: {non_active_candidates.shape}")
 
             # Combine active points and non-active candidates
-            total_needed = 4096
             n_active = len(active_pts)
-            n_non_active_needed = max(0, total_needed - n_active)
+            n_non_active_needed = max(0, self.num_features - n_active)
             if len(non_active_candidates) > n_non_active_needed:
                 idx = np.random.choice(
                     len(non_active_candidates), n_non_active_needed, replace=False
