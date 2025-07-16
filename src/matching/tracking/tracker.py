@@ -132,7 +132,7 @@ class Tracker:
                     backward_tracking=True,
                 )
 
-                if self.cfg.viz:
+                if self.cfg.viz and i_proc == 1:
                     from src.submodules.cotracker.utils.visualizer import Visualizer
 
                     vis = Visualizer(

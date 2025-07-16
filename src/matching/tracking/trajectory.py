@@ -101,7 +101,7 @@ class IncrementalTrajectorySet(object):
         )
         sample_map = (occupied_map_trans > self.ratio)[:: self.ratio, :: self.ratio, 0]
         candidate_grid = np.copy(self.grid_all_candidates[sample_map])
-        self.n_max_grid = candidate_grid.shape[0]
+        self.n_max_grid = 3600
         print(
             "ALIKED candidates:",
             candidate_kpts.shape[0],
@@ -110,7 +110,7 @@ class IncrementalTrajectorySet(object):
         )
         # Combine the candidates
         self.sample_candidates = np.concatenate(
-            [candidate_grid, candidate_kpts], axis=0
+            [candidate_kpts, candidate_grid], axis=0
         )
 
         # Initialize the trajectories
@@ -120,7 +120,7 @@ class IncrementalTrajectorySet(object):
             start_desc=self.candidate_desc,
         )
         self.new_traj_all(
-            start_times=(np.ones(self.n_max_grid) * init_frame_id).astype(int),
+            start_times=(np.ones(candidate_grid.shape[0]) * init_frame_id).astype(int),
             start_xys=candidate_grid,
         )
 
@@ -226,14 +226,25 @@ class IncrementalTrajectorySet(object):
                 self.active_trajs_aliked[i].extend(next_time, next_xy, next_desc)
                 new_active_trajs_aliked.append(self.active_trajs_aliked[i])
         # Handle the trajectories from the grid sampling
-        for i in range(n_grid_queries):
-            next_xy, flag = next_xys[i + n_aliked_queries], flags[i + n_aliked_queries]
-            if not flag:
+        if frame_path is None:
+            for i in range(n_grid_queries):
+                next_xy, flag = (
+                    next_xys[i + n_aliked_queries],
+                    flags[i + n_aliked_queries],
+                )
+                if not flag:
+                    self.full_trajs_grid.append(self.active_trajs_grid[i])
+                else:
+                    occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
+                    self.active_trajs_grid[i].extend(next_time, next_xy)
+                    new_active_trajs_grid.append(self.active_trajs_grid[i])
+        else:
+            for i in range(n_grid_queries):
+                next_xy, flag = (
+                    next_xys[i + n_aliked_queries],
+                    flags[i + n_aliked_queries],
+                )
                 self.full_trajs_grid.append(self.active_trajs_grid[i])
-            else:
-                occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
-                self.active_trajs_grid[i].extend(next_time, next_xy)
-                new_active_trajs_grid.append(self.active_trajs_grid[i])
 
         self.active_trajs_aliked = new_active_trajs_aliked
         self.active_trajs_grid = new_active_trajs_grid
@@ -284,25 +295,17 @@ class IncrementalTrajectorySet(object):
 
         # Generate the next sample candidates using grid sampling
         sample_map = (occupied_map_trans > self.ratio)[:: self.ratio, :: self.ratio, 0]
-        active_pts_grid = self.get_cur_pos()  # shape: (N_active, 2)
-        non_active_candidates_grid = np.copy(self.grid_all_candidates[sample_map])
-        # Reduce the candidates if there are too many
-        n_non_active_needed = max(0, self.n_max_grid - len(active_pts_grid))
-        if len(non_active_candidates_grid) > n_non_active_needed:
-            idx = np.random.choice(
-                len(non_active_candidates_grid), n_non_active_needed, replace=False
-            )
-            non_active_candidates_grid = non_active_candidates_grid[idx]
-
-        times = (np.ones(non_active_candidates_grid.shape[0]) * next_time).astype(int)
-        self.new_traj_all(times, non_active_candidates_grid)
+        candidate_grid = np.copy(self.grid_all_candidates[sample_map])
+        self.new_traj_all(
+            start_times=(np.ones(candidate_grid.shape[0]) * next_time).astype(int),
+            start_xys=candidate_grid,
+        )
 
         self.sample_candidates = np.concatenate(
             [
                 active_pts_aliked,
                 non_active_candidates_aliked,
-                active_pts_grid,
-                non_active_candidates_grid,
+                candidate_grid,
             ],
             axis=0,
         )

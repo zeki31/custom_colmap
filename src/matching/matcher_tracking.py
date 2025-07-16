@@ -52,7 +52,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
 
     def match(self) -> None:
         """Track points over frames in dynamic cameras and match keypoints in a fixed camera."""
-        if (self.feature_dir / "matches.h5").exists():
+        if (self.feature_dir / "matches_0.h5").exists():
             print("Already matched keypoints, skipping.")
             return
 
