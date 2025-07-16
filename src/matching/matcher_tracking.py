@@ -68,28 +68,35 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         self.detector.track_fixed(
             self.paths[: len(self.paths) // 4],
             feature_dir=self.feature_dir,
-            # viz=True,
+            viz=True,
         )
 
         print("Merging trajectories from all cameras...")
-        full_trajs = []
+        full_trajs_aliked = []
+        full_trajs_grid = []
         for cam_name in ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]:
-            trajs = np.load(
-                self.feature_dir / cam_name / "full_trajs.npy", allow_pickle=True
+            trajs_aliked = np.load(
+                self.feature_dir / cam_name / "full_trajs_aliked.npy", allow_pickle=True
             )
-            full_trajs.extend(trajs)
+            full_trajs_aliked.extend(trajs_aliked)
+            if cam_name == "1_fixed":
+                continue
+            trajs_grid = np.load(
+                self.feature_dir / cam_name / "full_trajs_grid.npy", allow_pickle=True
+            )
+            full_trajs_grid.extend(trajs_grid)
         # Build TrajectorySet
-        dict_trajs = {}
-        for idx, traj in enumerate(full_trajs):
-            dict_trajs[idx] = traj
-        trajectories = TrajectorySet(dict_trajs)
+        dict_trajs_aliked = {}
+        for idx, traj in enumerate(full_trajs_aliked):
+            dict_trajs_aliked[idx] = traj
+        trajectories = TrajectorySet(dict_trajs_aliked)
         trajectories.build_invert_indexes()
 
         kpts_per_img = self.detector.register_keypoints(
             self.paths,
             self.feature_dir,
             trajectories,
-            self.tracker.cfg.query,
+            only_aliked=True,
             # viz=True,
         )
         torch.cuda.empty_cache()
@@ -112,6 +119,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         gc.collect()
 
         trajs = trajectories.trajs
+        max_id = max(trajs.keys())
         uf = UnionFind(len(trajs))
         for traj_id1, traj_id2 in tqdm(traj_pairs, desc="Extending trajectories"):
             uf.union(traj_id1, traj_id2)
@@ -123,6 +131,11 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajs[root_traj_id].xys.extend(traj.xys)
             trajs[root_traj_id].descs.extend(traj.descs)
             trajs[root_traj_id].times.extend(traj.times)
+        # Add grid trajectories
+        print(len(trajs), max_id)
+        for idx, traj in enumerate(trajs_grid, start=max_id + 1):
+            trajs[idx] = traj
+        print(len(trajs), max(trajs.keys()))
         trajectories = TrajectorySet(trajs)
         trajectories.build_invert_indexes()
 
@@ -131,7 +144,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.paths,
             self.feature_dir,
             trajectories,
-            self.tracker.cfg.query,
+            only_aliked=False,
             # viz=True,
         )
         gc.collect()

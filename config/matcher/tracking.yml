@@ -4,7 +4,7 @@ tracker:
   ckpt_path: src/submodules/cotracker/checkpoints/scaled_offline.pth
   window_len: 5
   grid_size: 60
-  sample_ratio: 3
+  sample_ratio: 4
   overlap: 1
   query: aliked
   num_features: 4096
