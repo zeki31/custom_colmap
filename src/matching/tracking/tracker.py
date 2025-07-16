@@ -41,17 +41,13 @@ class Tracker:
         self.logger = logger
         self.save_dir = save_dir
 
-        if self.cfg.viz:
-            self.viz_dir = save_dir / "tracking_viz"
-            self.viz_dir.mkdir(parents=True, exist_ok=True)
-
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Execute the tracking process in parallel."""
         futures = []
         with ProcessPoolExecutor(max_workers=2) as executor:
             for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
                 sub_feature_dir = feature_dir / cam_name
-                if (sub_feature_dir / "full_trajs.npy").exists():
+                if (sub_feature_dir / "full_trajs_aliked.npy").exists():
                     print(f"Skipping {cam_name} as it already exists.")
                     continue
 
@@ -74,6 +70,10 @@ class Tracker:
         self, image_paths: list[Path], feature_dir: Path, i_proc: int
     ) -> None:
         """Track point trajectories in the given frames."""
+        if self.cfg.viz:
+            self.viz_dir = feature_dir / "tracking_viz"
+            self.viz_dir.mkdir(parents=True, exist_ok=True)
+
         gpu_id = 0 if i_proc % 2 else 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
@@ -88,6 +88,7 @@ class Tracker:
             image_paths[0],
             self.cfg.query,
             self.cfg.num_features,
+            init_frame_id=i_proc * len(image_paths),
         )
 
         point_tracker = CoTrackerPredictor(
@@ -98,14 +99,17 @@ class Tracker:
         ).to(device)
 
         start_t = 0
+        n_aliked_queries = trajs.candidate_desc.shape[0]
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
                 end_t = start_t + self.cfg.window_len
 
                 frames = []
                 for image_path in image_paths[start_t:end_t]:
-                    im = cv2.imread(str(image_path))
+                    im = cv2.imread(image_path)
                     frames.append(np.array(im))
+                # while len(frames) < 10:
+                #     frames.append(im)
                 video = np.stack(frames)
                 video = (
                     torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
@@ -148,46 +152,41 @@ class Tracker:
                 pred_tracks = pred_tracks[0].cpu().numpy()
                 pred_visibility = pred_visibility[0].cpu().numpy()
 
-                # valid_cond = (
-                #     (pred_tracks[0][:, 0] > 0)
-                #     & (pred_tracks[0][:, 0] < w - 1)
-                #     & (pred_tracks[0][:, 1] > 0)
-                #     & (pred_tracks[0][:, 1] < h - 1)
-                # )
-                viz_mask = pred_visibility[0] > 0
+                valid_cond = (
+                    (pred_tracks[0][:, 0] >= 0)
+                    & (pred_tracks[0][:, 0] < w)
+                    & (pred_tracks[0][:, 1] >= 0)
+                    & (pred_tracks[0][:, 1] < h)
+                )
+                viz_mask = (pred_visibility[0] > 0) & valid_cond
                 for timestep in range(len(pred_tracks) - 1):
                     frame_id = start_t + i_proc * len(image_paths) + timestep
 
-                    # Generate new trajectories if needed
-                    if start_t == 0 and timestep == 0:
-                        points = pred_tracks[timestep]
-                        times = (np.ones(points.shape[0]) * frame_id).astype(int)
-                        trajs.new_traj_all(times, points)
-
-                    # valid_cond = (
-                    #     (pred_tracks[timestep][:, 0] > 0)
-                    #     & (pred_tracks[timestep][:, 0] < w - 1)
-                    #     & (pred_tracks[timestep][:, 1] > 0)
-                    #     & (pred_tracks[timestep][:, 1] < h - 1)
-                    # )
-                    viz_mask = viz_mask & (pred_visibility[timestep] > 0)
-                    # valid_cond_next = (
-                    #     (pred_tracks[timestep + 1][viz_mask][:, 0] > 0)
-                    #     & (pred_tracks[timestep + 1][viz_mask][:, 0] < w - 1)
-                    #     & (pred_tracks[timestep + 1][viz_mask][:, 1] > 0)
-                    #     & (pred_tracks[timestep + 1][viz_mask][:, 1] < h - 1)
-                    # )
+                    valid_cond = (
+                        (pred_tracks[timestep][:, 0] >= 0)
+                        & (pred_tracks[timestep][:, 0] < w)
+                        & (pred_tracks[timestep][:, 1] >= 0)
+                        & (pred_tracks[timestep][:, 1] < h)
+                    )
+                    viz_mask = viz_mask & (pred_visibility[timestep] > 0) & valid_cond
+                    valid_cond_next = (
+                        (pred_tracks[timestep + 1][viz_mask][:, 0] >= 0)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 0] < w)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 1] >= 0)
+                        & (pred_tracks[timestep + 1][viz_mask][:, 1] < h)
+                    )
 
                     # Propagate all the trajectories
                     if timestep == len(pred_tracks) - 2:
                         # Last timestep, we extend the active trajectories
-                        trajs.extend_all(
+                        n_aliked_queries = trajs.extend_all(
                             next_xys=pred_tracks[timestep + 1][viz_mask],
                             next_time=frame_id + 1,
-                            flags=pred_visibility[timestep + 1][viz_mask],
-                            next_descs=trajs.candidate_desc[viz_mask]
-                            if trajs.query == "aliked"
-                            else None,
+                            flags=pred_visibility[timestep + 1][viz_mask]
+                            & valid_cond_next,
+                            next_descs=trajs.candidate_desc[
+                                viz_mask[:n_aliked_queries]
+                            ],
                             frame_path=image_paths[end_t - 1]
                             if end_t < len(image_paths)
                             else image_paths[-1],
@@ -196,10 +195,11 @@ class Tracker:
                         trajs.extend_all(
                             next_xys=pred_tracks[timestep + 1][viz_mask],
                             next_time=frame_id + 1,
-                            flags=pred_visibility[timestep + 1][viz_mask],
-                            next_descs=trajs.candidate_desc[viz_mask]
-                            if trajs.query == "aliked"
-                            else None,
+                            flags=pred_visibility[timestep + 1][viz_mask]
+                            & valid_cond_next,
+                            next_descs=trajs.candidate_desc[
+                                viz_mask[:n_aliked_queries]
+                            ],
                         )
 
                 start_t += stride
@@ -208,9 +208,10 @@ class Tracker:
 
             trajs.clear_active()
 
-        np.save(feature_dir / "full_trajs.npy", trajs.full_trajs)
+        np.save(feature_dir / "full_trajs_grid.npy", trajs.full_trajs_grid)
+        np.save(feature_dir / "full_trajs_aliked.npy", trajs.full_trajs_aliked)
 
-        if self.cfg.viz and i_proc == 0:
+        if self.cfg.viz and i_proc == 1:
             mp4_files = sorted(self.viz_dir.glob("*.mp4"))
             concat_list_path = self.viz_dir / "concat_list.txt"
             with open(concat_list_path, "w") as f:

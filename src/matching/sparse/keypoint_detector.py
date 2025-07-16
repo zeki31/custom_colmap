@@ -130,7 +130,7 @@ class KeypointDetector:
         paths: list[Path],
         feature_dir: Path,
         trajectories: TrajectorySet,
-        query: Literal["grid", "aliked"],
+        only_aliked: bool,
         viz: bool = False,
     ) -> dict[
         int,
@@ -166,10 +166,10 @@ class KeypointDetector:
                     traj = trajectories.trajs[traj_id]
                     traj_ids.append(traj_id)
                     kpts.append(traj.xys[idx_in_traj])
-                    if query == "aliked":
+                    if only_aliked:
                         descs.append(traj.descs[idx_in_traj])
                 kpts_np = np.stack(kpts, dtype=np.float32) + 0.5
-                if query == "aliked":
+                if only_aliked:
                     descs_np = np.stack(descs, dtype=np.float32)
 
                 if viz:
@@ -183,11 +183,11 @@ class KeypointDetector:
                     plt.close()
 
                 f_keypoints[key] = kpts_np
-                if query == "aliked":
+                if only_aliked:
                     f_descriptors[key] = descs_np
                 kpts_per_img[int(frame_id)] = (
                     kpts_np,
-                    descs_np if query == "aliked" else None,
+                    descs_np if only_aliked else None,
                     np.array(traj_ids, dtype=int),
                 )
 
@@ -227,7 +227,7 @@ class KeypointDetector:
         save_dir = feature_dir / "1_fixed"
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        if (save_dir / "full_trajs.npy").exists():
+        if (save_dir / "full_trajs_aliked.npy").exists():
             print("Already tracked keypoints in the fixed camera, skipping.")
             return
 
@@ -282,4 +282,4 @@ class KeypointDetector:
         for kpts, descs in tzip(kpts_masked, descs_masked):
             traj = Trajectory(0, kpts, descs)
             full_trajs.append(traj)
-        np.save(save_dir / "full_trajs.npy", full_trajs)
+        np.save(save_dir / "full_trajs_aliked.npy", full_trajs)
