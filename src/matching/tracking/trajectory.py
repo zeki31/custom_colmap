@@ -307,12 +307,12 @@ class IncrementalTrajectorySet(object):
             axis=0,
         )
 
-        print(
-            active_pts_aliked.shape[0],
-            non_active_candidates_aliked.shape[0],
-            active_pts_grid.shape[0],
-            non_active_candidates_grid.shape[0],
-        )
+        # print(
+        #     active_pts_aliked.shape[0],
+        #     non_active_candidates_aliked.shape[0],
+        #     active_pts_grid.shape[0],
+        #     non_active_candidates_grid.shape[0],
+        # )
 
         return len(
             np.concatenate([active_pts_aliked, non_active_candidates_aliked], axis=0)

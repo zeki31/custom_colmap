@@ -7,12 +7,16 @@ from typing import Optional
 import cv2
 import h5py
 import kornia.feature as KF
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
 from jaxtyping import Float, Int, UInt
 from numpy.typing import NDArray
 from tqdm import tqdm
+
+from src.submodules.LightGlue.lightglue import viz2d
+from src.submodules.LightGlue.lightglue.utils import load_image
 
 mp.set_start_method("spawn", force=True)
 
@@ -313,13 +317,13 @@ class KeypointMatcher:
                 Int[NDArray, "..."],
             ],
         ],
-        # viz: bool = False,
+        viz: bool = False,
     ) -> None:
         """Match keypoints in the dynamic cameras exhaustively."""
-        # if viz:
-        #     viz_dir = self.save_dir / "matches_viz"
-        #     viz_dir.mkdir(parents=True, exist_ok=True)
-        #     images = [load_image(path) for path in paths]
+        if viz:
+            viz_dir = self.save_dir / "matches_viz"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+            images = [load_image(path) for path in self.paths]
 
         with h5py.File(
             self.feature_dir / f"matches_{i_proc}.h5", mode="w"
@@ -351,18 +355,19 @@ class KeypointMatcher:
                     ]
                     indices = indices[(mask_val1 == 0) & (mask_val2 == 0)].copy()
 
-                # if viz:
-                #     image1 = images[idx1]
-                #     image2 = images[idx2]
-                #     viz2d.plot_images([image1, image2])
-                #     viz2d.plot_matches(
-                #         kpts1[indices[:, 0]], kpts2[indices[:, 1]], color="lime", lw=0.2
-                #     )
-                #     key1_viz = self.paths[idx1].parts[-3] + "_" + self.paths[idx1].stem
-                #     key2_viz = self.paths[idx2].parts[-3] + "_" + self.paths[idx2].stem
-                #     viz2d.add_text(0, f"{key1_viz}-{key2_viz}", fs=20)
-                #     viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
-                #     plt.close()
+                if viz:
+                    image1 = images[idx1]
+                    image2 = images[idx2]
+                    viz2d.plot_images([image1, image2])
+                    viz2d.plot_matches(
+                        kpts1[indices[:, 0]], kpts2[indices[:, 1]], color="lime", lw=0.2
+                    )
+                    key1_viz = self.paths[idx1].parts[-3] + "_" + self.paths[idx1].stem
+                    key2_viz = self.paths[idx2].parts[-3] + "_" + self.paths[idx2].stem
+                    viz2d.add_text(0, key1_viz, fs=20)
+                    viz2d.add_text(1, key2_viz, fs=20)
+                    viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+                    plt.close()
 
                 if len(indices) >= self.cfg.min_matches:
                     group = f_matches.require_group(key1)

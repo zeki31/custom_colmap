@@ -108,6 +108,8 @@ class Tracker:
                 for image_path in image_paths[start_t:end_t]:
                     im = cv2.imread(image_path)
                     frames.append(np.array(im))
+                # while len(frames) < 10:
+                #     frames.append(im)
                 video = np.stack(frames)
                 video = (
                     torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
@@ -209,7 +211,7 @@ class Tracker:
         np.save(feature_dir / "full_trajs_grid.npy", trajs.full_trajs_grid)
         np.save(feature_dir / "full_trajs_aliked.npy", trajs.full_trajs_aliked)
 
-        if self.cfg.viz:
+        if self.cfg.viz and i_proc == 1:
             mp4_files = sorted(self.viz_dir.glob("*.mp4"))
             concat_list_path = self.viz_dir / "concat_list.txt"
             with open(concat_list_path, "w") as f:

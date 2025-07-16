@@ -132,10 +132,8 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajs[root_traj_id].descs.extend(traj.descs)
             trajs[root_traj_id].times.extend(traj.times)
         # Add grid trajectories
-        print(len(trajs), max_id)
         for idx, traj in enumerate(trajs_grid, start=max_id + 1):
             trajs[idx] = traj
-        print(len(trajs), max(trajs.keys()))
         trajectories = TrajectorySet(trajs)
         trajectories.build_invert_indexes()
 
