@@ -18,6 +18,25 @@ sudo rm -rf cmake-3.28.5 cmake-3.28.5.tar.gz
 git clone https://github.com/colmap/colmap.git
 cd colmap
 git checkout 3.11.1
+sudo apt-get install \
+    ninja-build \
+    build-essential \
+    libboost-program-options-dev \
+    libboost-graph-dev \
+    libboost-system-dev \
+    libeigen3-dev \
+    libflann-dev \
+    libfreeimage-dev \
+    libmetis-dev \
+    libgoogle-glog-dev \
+    libgtest-dev \
+    libgmock-dev \
+    libsqlite3-dev \
+    libglew-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev \
+    libcgal-dev \
+    libceres-dev
 # DO NOT run this command, it will cause ceres error
 # sudo apt-get install -y \
 #     nvidia-cuda-toolkit \

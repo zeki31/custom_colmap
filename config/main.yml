@@ -19,7 +19,7 @@ retriever:
   ext: jpg
   start: 0
   duration: -1
-  stride: 5
+  stride: 1
 
   comp_ratio: 4
 

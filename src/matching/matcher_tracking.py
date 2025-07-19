@@ -105,7 +105,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         index_pairs = self.retriever.get_index_pairs(
             self.paths,
             "exhaustive_keyframe_excluding_same_view",
-            self.cfg.tracker.window_len,
+            self.cfg.tracker.window_len - self.cfg.tracker.overlap,
         )
         traj_pairs_list = self.matcher.multiprocess(
             self.matcher.match_trajectories,
@@ -147,7 +147,9 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         )
         gc.collect()
         index_pairs = self.retriever.get_index_pairs(
-            self.paths, "exhaustive_dynamic", self.cfg.tracker.window_len
+            self.paths,
+            "exhaustive_dynamic",
+            self.cfg.tracker.window_len - self.cfg.tracker.overlap,
         )
         _ = self.matcher.multiprocess(
             self.matcher.traj2match,

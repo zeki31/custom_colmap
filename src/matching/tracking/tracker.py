@@ -159,6 +159,7 @@ class Tracker:
                     & (pred_tracks[0][:, 1] < h)
                 )
                 viz_mask = (pred_visibility[0] > 0) & valid_cond
+                cnt = 0
                 for timestep in range(len(pred_tracks) - 1):
                     frame_id = start_t + i_proc * len(image_paths) + timestep
 
@@ -177,7 +178,7 @@ class Tracker:
                     )
 
                     # Propagate all the trajectories
-                    if timestep == len(pred_tracks) - 2:
+                    if timestep == len(pred_tracks) - self.cfg.overlap - 1:
                         # Last timestep, we extend the active trajectories
                         n_aliked_queries = trajs.extend_all(
                             next_xys=pred_tracks[timestep + 1][viz_mask],
@@ -201,6 +202,10 @@ class Tracker:
                                 viz_mask[:n_aliked_queries]
                             ],
                         )
+
+                    cnt += 1
+                    if cnt == self.cfg.window_len - self.cfg.overlap:
+                        break
 
                 start_t += stride
 

@@ -168,7 +168,7 @@ class KeypointDetector:
                     kpts.append(traj.xys[idx_in_traj])
                     if only_aliked:
                         descs.append(traj.descs[idx_in_traj])
-                kpts_np = np.stack(kpts, dtype=np.float32) + 0.5
+                kpts_np = np.stack(kpts, dtype=np.float32)
                 if only_aliked:
                     descs_np = np.stack(descs, dtype=np.float32)
 
