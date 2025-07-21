@@ -20,6 +20,13 @@ bash ./setup_env.sh
 bash scripts/download_ckpts.sh
 ```
 
+## Data Preparetion
+```bash
+# Video to frames
+python scripts/data_preprocess/video2frames.py -b folder_path_containing_videos
+
+```
+
 ## Running
 ```bash
 python src/main.py -i config/main.yml -o wandb.mode=online
