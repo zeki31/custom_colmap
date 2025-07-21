@@ -44,7 +44,7 @@ class Tracker:
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Execute the tracking process in parallel."""
         futures = []
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=3) as executor:
             for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
                 sub_feature_dir = feature_dir / cam_name
                 if (sub_feature_dir / "full_trajs_aliked.npy").exists():
@@ -74,8 +74,10 @@ class Tracker:
             self.viz_dir = feature_dir / "tracking_viz"
             self.viz_dir.mkdir(parents=True, exist_ok=True)
 
-        gpu_id = 0 if i_proc % 2 else 1
-        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+        # gpu_id = 0 if i_proc % 2 else 1
+        device = torch.device(
+            f"cuda:{i_proc - 1}" if torch.cuda.is_available() else "cpu"
+        )
 
         h, w = cv2.imread(image_paths[0]).shape[:2]
         stride = self.cfg.window_len - self.cfg.overlap
@@ -188,8 +190,8 @@ class Tracker:
                             next_descs=trajs.candidate_desc[
                                 viz_mask[:n_aliked_queries]
                             ],
-                            frame_path=image_paths[end_t - 1]
-                            if end_t < len(image_paths)
+                            frame_path=image_paths[start_t + self.cfg.overlap - 1]
+                            if start_t + self.cfg.overlap < len(image_paths)
                             else image_paths[-1],
                         )
                     else:

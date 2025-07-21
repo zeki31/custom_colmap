@@ -208,7 +208,7 @@ class KeypointMatcher:
     ) -> set[tuple[int, int]]:
         """Match trajectories in the different dynamic cameras."""
         device = torch.device(
-            f"cuda:{i_proc % 2}" if torch.cuda.is_available() else "cpu"
+            f"cuda:{i_proc % 3}" if torch.cuda.is_available() else "cpu"
         )
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
 

@@ -5,7 +5,7 @@ tracker:
   window_len: 10
   grid_size: 60
   sample_ratio: 6
-  overlap: 1
+  overlap: 5
   query: aliked
   num_features: 4096
   viz: false
