@@ -183,11 +183,10 @@ class Tracker:
 
                     # Propagate all the trajectories
                     if (
-                        len(pred_tracks) > stride
+                        len(pred_tracks) == self.cfg.window_len
                         and timestep == len(pred_tracks) - self.cfg.overlap - 1
                     ):
                         # Last timestep, we extend the active trajectories
-                        # print("Last timestep, extending active trajectories.")
                         n_aliked_queries = trajs.extend_all(
                             next_xys=pred_tracks[timestep + 1][viz_mask],
                             next_time=frame_id + 1,
@@ -212,10 +211,14 @@ class Tracker:
                         )
 
                     cnt += 1
-                    if cnt == stride:
+                    if len(pred_tracks) == self.cfg.window_len and cnt == stride:
                         break
 
-                start_t += stride
+                start_t += (
+                    stride
+                    if len(pred_tracks) == self.cfg.window_len
+                    else len(pred_tracks)
+                )
 
                 pbar.update(1)
 
