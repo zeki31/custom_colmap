@@ -162,8 +162,10 @@ class Tracker:
                 )
                 viz_mask = (pred_visibility[0] > 0) & valid_cond
                 cnt = 0
+                # print("len(pred_tracks)", len(pred_tracks))
                 for timestep in range(len(pred_tracks) - 1):
                     frame_id = start_t + i_proc * len(image_paths) + timestep
+                    # print(start_t, end_t, timestep, frame_id)
 
                     valid_cond = (
                         (pred_tracks[timestep][:, 0] >= 0)
@@ -180,8 +182,12 @@ class Tracker:
                     )
 
                     # Propagate all the trajectories
-                    if timestep == len(pred_tracks) - self.cfg.overlap - 1:
+                    if (
+                        len(pred_tracks) > stride
+                        and timestep == len(pred_tracks) - self.cfg.overlap - 1
+                    ):
                         # Last timestep, we extend the active trajectories
+                        # print("Last timestep, extending active trajectories.")
                         n_aliked_queries = trajs.extend_all(
                             next_xys=pred_tracks[timestep + 1][viz_mask],
                             next_time=frame_id + 1,
@@ -190,8 +196,8 @@ class Tracker:
                             next_descs=trajs.candidate_desc[
                                 viz_mask[:n_aliked_queries]
                             ],
-                            frame_path=image_paths[start_t + self.cfg.overlap - 1]
-                            if start_t + self.cfg.overlap < len(image_paths)
+                            frame_path=image_paths[start_t + stride - 1]
+                            if start_t + stride < len(image_paths)
                             else image_paths[-1],
                         )
                     else:
@@ -206,7 +212,7 @@ class Tracker:
                         )
 
                     cnt += 1
-                    if cnt == self.cfg.window_len - self.cfg.overlap:
+                    if cnt == stride:
                         break
 
                 start_t += stride

@@ -205,7 +205,7 @@ class IncrementalTrajectorySet(object):
     ) -> int | None:
         n_aliked_queries = len(self.active_trajs_aliked)
         n_grid_queries = len(self.active_trajs_grid)
-        # print(f"Extending {len(self.active_trajs)} active trajectories with {len(next_xys)} new points at time {next_time}.")
+        # print(f"Extending {len(self.active_trajs_grid)} + {len(self.active_trajs_aliked)} = {len(self.active_trajs_grid) + len(self.active_trajs_aliked)} active trajectories with {len(next_xys)} new points at time {next_time}.")
         # Extend all the trajs
         assert len(next_xys) == (
             n_aliked_queries + n_grid_queries
