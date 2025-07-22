@@ -30,7 +30,7 @@ The expected output structure:
                     - ...
 
 Example usage:
-python scripts/data_preprocess/video2frames.py -b ../datasets/sony_ai/synchronized/lane/running
+python scripts/data_preprocess/video2frames.py -b ../datasets/sony_ai/valid_charuco/lane/running
 """
 
 import subprocess
@@ -43,12 +43,12 @@ from tqdm import tqdm
 class Videos2Frames:
     def __init__(self, base_dir: Path):
         self.base_dir = base_dir
-        self.output_dir = Path(str(base_dir).replace("synchronized", "frames"))
+        # self.output_dir = Path(str(base_dir).replace("synchronized", "frames"))
 
     def convert_videos(self) -> None:
         """Convert all videos in the base directory to frames."""
         video_paths = sorted(self.base_dir.glob("*.MP4"))
-        video_paths = [p for p in video_paths if p.stem != "1_fixed_numbered"]
+        # video_paths = [p for p in video_paths if p.stem != "1_fixed_numbered"]
 
         for video_path in tqdm(video_paths, desc="Converting videos to frames"):
             self.convert_one_video(video_path, 59.94005994005994)
@@ -59,13 +59,14 @@ class Videos2Frames:
 
     def convert_one_video(self, video_path: Path, fps: float) -> None:
         """Convert a video to frames using FFMPEG."""
-        output_images_dir = self.output_dir / video_path.stem / "images"
+        output_images_dir = self.base_dir / video_path.stem / "images"
         output_images_dir.mkdir(parents=True, exist_ok=True)
 
         command = [
             "ffmpeg",
             "-i",
             str(video_path),
+            "-start_number", "0",
             "-vf",
             f"fps={fps}",
             str(output_images_dir / "%05d.jpg"),

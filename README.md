@@ -22,9 +22,8 @@ bash scripts/download_ckpts.sh
 
 ## Data Preparetion
 ```bash
-# Video to frames
+python scripts/data_preprocess/cut_invalid_frames.py -b folder_path_containing_synchronized_videos -f 415 -l 1680
 python scripts/data_preprocess/video2frames.py -b folder_path_containing_videos
-
 ```
 
 ## Running
