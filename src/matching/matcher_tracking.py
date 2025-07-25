@@ -49,6 +49,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         self.matcher = KeypointMatcher(
             cfg.keypoint_matcher, logger, paths, feature_dir, save_dir
         )
+        self.stride = cfg.tracker.window_len - cfg.tracker.overlap
 
     def match(self) -> None:
         """Track points over frames in dynamic cameras and match keypoints in a fixed camera."""
@@ -97,7 +98,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.feature_dir,
             trajectories,
             only_aliked=True,
-            # viz=True,
+            viz=self.cfg.keypoint_detector.viz,
         )
         torch.cuda.empty_cache()
         gc.collect()
@@ -105,7 +106,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         index_pairs = self.retriever.get_index_pairs(
             self.paths,
             "exhaustive_keyframe_excluding_same_view",
-            self.cfg.tracker.window_len - self.cfg.tracker.overlap,
+            self.stride,
         )
         traj_pairs_list = self.matcher.multiprocess(
             self.matcher.match_trajectories,
@@ -132,7 +133,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             trajs[root_traj_id].descs.extend(traj.descs)
             trajs[root_traj_id].times.extend(traj.times)
         # Add grid trajectories
-        for idx, traj in enumerate(trajs_grid, start=max_id + 1):
+        for idx, traj in enumerate(full_trajs_grid, start=max_id + 1):
             trajs[idx] = traj
         trajectories = TrajectorySet(trajs)
         trajectories.build_invert_indexes()
@@ -143,13 +144,13 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.feature_dir,
             trajectories,
             only_aliked=False,
-            # viz=True,
+            viz=self.cfg.keypoint_detector.viz,
         )
         gc.collect()
         index_pairs = self.retriever.get_index_pairs(
             self.paths,
             "exhaustive_dynamic",
-            self.cfg.tracker.window_len - self.cfg.tracker.overlap,
+            self.stride,
         )
         _ = self.matcher.multiprocess(
             self.matcher.traj2match,

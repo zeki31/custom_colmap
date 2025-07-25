@@ -26,6 +26,7 @@ class KeypointMatcherCfg:
     min_matches: int = 15
     verbose: bool = True
     mask: bool = False
+    filter_threshold: float = 0.1
 
 
 class KeypointMatcher:
@@ -48,7 +49,7 @@ class KeypointMatcher:
             "width_confidence": -1,
             "depth_confidence": -1,
             "mp": True,
-            # "filter_threshold": 0.5,
+            "filter_threshold": cfg.filter_threshold,
         }
 
         if self.cfg.mask:
@@ -208,7 +209,7 @@ class KeypointMatcher:
     ) -> set[tuple[int, int]]:
         """Match trajectories in the different dynamic cameras."""
         device = torch.device(
-            f"cuda:{i_proc % 3}" if torch.cuda.is_available() else "cpu"
+            f"cuda:{i_proc % 2}" if torch.cuda.is_available() else "cpu"
         )
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
 

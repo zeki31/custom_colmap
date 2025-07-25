@@ -22,7 +22,8 @@ class TrackerCfg:
     ckpt_path: str = "checkpoints/scaled_offline.pth"
     window_len: int = 60
     grid_size: int = 60
-    sample_ratio: int = 6
+    sample_ratio_grid: int = 6
+    sample_ratio_aliked: int = 1
     traj_min_len: int = 2
     overlap: int = 2
     query: Literal["grid", "aliked"] = "grid"
@@ -74,18 +75,16 @@ class Tracker:
             self.viz_dir = feature_dir / "tracking_viz"
             self.viz_dir.mkdir(parents=True, exist_ok=True)
 
-        # gpu_id = 0 if i_proc % 2 else 1
-        device = torch.device(
-            f"cuda:{i_proc - 1}" if torch.cuda.is_available() else "cpu"
-        )
+        gpu_id = 0 if i_proc % 2 else 1
+        device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
         h, w = cv2.imread(image_paths[0]).shape[:2]
-        stride = self.cfg.window_len - self.cfg.overlap
         trajs = IncrementalTrajectorySet(
             len(image_paths) + 1,
             h,
             w,
-            self.cfg.sample_ratio,
+            self.cfg.sample_ratio_grid,
+            self.cfg.sample_ratio_aliked,
             device,
             image_paths[0],
             self.cfg.query,
@@ -101,6 +100,7 @@ class Tracker:
         ).to(device)
 
         start_t = 0
+        stride = self.cfg.window_len - self.cfg.overlap
         n_aliked_queries = trajs.candidate_desc.shape[0]
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
@@ -110,8 +110,6 @@ class Tracker:
                 for image_path in image_paths[start_t:end_t]:
                     im = cv2.imread(image_path)
                     frames.append(np.array(im))
-                # while len(frames) < 10:
-                #     frames.append(im)
                 video = np.stack(frames)
                 video = (
                     torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(device)
@@ -148,7 +146,7 @@ class Tracker:
                         pred_tracks,
                         pred_visibility,
                         query_frame=0,
-                        filename=f"{start_t:04d}_{end_t - 1:04d}",
+                        filename=f"{start_t:04d}",
                     )
 
                 pred_tracks = pred_tracks[0].cpu().numpy()
@@ -161,9 +159,12 @@ class Tracker:
                     & (pred_tracks[0][:, 1] < h)
                 )
                 viz_mask = (pred_visibility[0] > 0) & valid_cond
-                cnt = 0
-                # print("len(pred_tracks)", len(pred_tracks))
-                for timestep in range(len(pred_tracks) - 1):
+                loop = (
+                    range(stride)
+                    if len(pred_tracks) == self.cfg.window_len
+                    else range(len(pred_tracks) - 1)
+                )
+                for timestep in loop:
                     frame_id = start_t + i_proc * len(image_paths) + timestep
                     # print(start_t, end_t, timestep, frame_id)
 
@@ -184,7 +185,7 @@ class Tracker:
                     # Propagate all the trajectories
                     if (
                         len(pred_tracks) == self.cfg.window_len
-                        and timestep == len(pred_tracks) - self.cfg.overlap - 1
+                        and timestep == stride - 1
                     ):
                         # Last timestep, we extend the active trajectories
                         n_aliked_queries = trajs.extend_all(
@@ -195,8 +196,8 @@ class Tracker:
                             next_descs=trajs.candidate_desc[
                                 viz_mask[:n_aliked_queries]
                             ],
-                            frame_path=image_paths[start_t + stride - 1]
-                            if start_t + stride < len(image_paths)
+                            frame_path=image_paths[start_t + timestep + 1]
+                            if start_t + timestep + 1 <= len(image_paths)
                             else image_paths[-1],
                         )
                     else:
@@ -209,10 +210,6 @@ class Tracker:
                                 viz_mask[:n_aliked_queries]
                             ],
                         )
-
-                    cnt += 1
-                    if len(pred_tracks) == self.cfg.window_len and cnt == stride:
-                        break
 
                 start_t += (
                     stride

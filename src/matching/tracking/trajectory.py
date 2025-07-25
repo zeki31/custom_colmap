@@ -56,7 +56,8 @@ class IncrementalTrajectorySet(object):
         total_length: int,
         img_h: int,
         img_w: int,
-        sample_ratio: int,
+        sample_ratio_grid: int,
+        sample_ratio_aliked: int,
         device: torch.device,
         init_frame_path: Path,
         query: Literal["grid", "aliked"],
@@ -64,7 +65,8 @@ class IncrementalTrajectorySet(object):
         init_frame_id: int,
     ):
         self.total_length = total_length
-        self.ratio = sample_ratio
+        self.ratio_grid = sample_ratio_grid
+        self.ratio_aliked = sample_ratio_aliked
         self.h, self.w = img_h, img_w
         self.active_trajs_grid = []
         self.active_trajs_aliked = []
@@ -99,7 +101,9 @@ class IncrementalTrajectorySet(object):
         occupied_map_trans = scipy.ndimage.morphology.distance_transform_edt(
             1.0 - occupied_map
         )
-        sample_map = (occupied_map_trans > self.ratio)[:: self.ratio, :: self.ratio, 0]
+        sample_map = (occupied_map_trans > self.ratio_grid)[
+            :: self.ratio_grid, :: self.ratio_grid, 0
+        ]
         candidate_grid = np.copy(self.grid_all_candidates[sample_map])
         self.n_max_grid = 3600
         print(
@@ -156,7 +160,7 @@ class IncrementalTrajectorySet(object):
         x, y = np.arange(0, self.w), np.arange(0, self.h)
         xx, yy = np.meshgrid(x, y)
         xys = np.stack([xx, yy], -1, dtype=np.float32)
-        s_xys = xys[:: self.ratio, :: self.ratio, :]
+        s_xys = xys[:: self.ratio_grid, :: self.ratio_grid, :]
         return s_xys
 
     def new_traj_all(
@@ -265,7 +269,7 @@ class IncrementalTrajectorySet(object):
         xs = extracted_pts[:, 0].astype(int)
         ys = extracted_pts[:, 1].astype(int)
         # If occupied_map_trans has shape (H, W, 1), squeeze the last dimension
-        sample_map = occupied_map_trans[ys, xs].squeeze() > self.ratio  # (N,)
+        sample_map = occupied_map_trans[ys, xs].squeeze() > self.ratio_aliked  # (N,)
         non_active_candidates_aliked = extracted_pts[sample_map]
         non_active_candidates_desc = extracted_descs[sample_map]
         # Reduce the candidates if there are too many
@@ -294,7 +298,9 @@ class IncrementalTrajectorySet(object):
         )
 
         # Generate the next sample candidates using grid sampling
-        sample_map = (occupied_map_trans > self.ratio)[:: self.ratio, :: self.ratio, 0]
+        sample_map = (occupied_map_trans > self.ratio_grid)[
+            :: self.ratio_grid, :: self.ratio_grid, 0
+        ]
         candidate_grid = np.copy(self.grid_all_candidates[sample_map])
         self.new_traj_all(
             start_times=(np.ones(candidate_grid.shape[0]) * next_time).astype(int),

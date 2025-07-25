@@ -23,6 +23,7 @@ from src.submodules.LightGlue.lightglue.utils import load_image
 @dataclass
 class KeypointDetectorCfg:
     num_features: int = 4096
+    viz: bool = False
 
 
 class KeypointDetector:
@@ -192,26 +193,48 @@ class KeypointDetector:
                 )
 
         if viz:
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-framerate",
-                    "12",
-                    "-i",
-                    str(viz_dir / "%*.png"),
-                    "-c:v",
-                    "libx264",
-                    str(viz_dir / "kpts.mp4"),
-                ]
-            )
-            self.logger.log(
-                {
-                    "Keypoint visualization": wandb.Video(
-                        str(viz_dir / "kpts.mp4"), format="mp4"
-                    )
-                }
-            )
+            if only_aliked:
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-framerate",
+                        "12",
+                        "-i",
+                        str(viz_dir / "%*.png"),
+                        "-c:v",
+                        "libx264",
+                        str(viz_dir / "kpts.mp4"),
+                    ]
+                )
+                self.logger.log(
+                    {
+                        "Keypoint visualization": wandb.Video(
+                            str(viz_dir / "kpts.mp4"), format="mp4"
+                        )
+                    }
+                )
+            else:
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-framerate",
+                        "12",
+                        "-i",
+                        str(viz_dir / "%*.png"),
+                        "-c:v",
+                        "libx264",
+                        str(viz_dir / "kpts_w_grid.mp4"),
+                    ]
+                )
+                self.logger.log(
+                    {
+                        "Keypoint visualization": wandb.Video(
+                            str(viz_dir / "kpts_w_grid.mp4"), format="mp4"
+                        )
+                    }
+                )
             for img in viz_dir.glob("*.png"):
                 img.unlink()
 

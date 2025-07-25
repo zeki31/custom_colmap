@@ -9,10 +9,10 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: main
+  group: nvs_test
   name: ours
   id: null
-  mode: online
+  mode: offline
 
 retriever:
   img_dir_type: stream # images / frame / stream

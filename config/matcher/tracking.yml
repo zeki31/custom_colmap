@@ -4,17 +4,20 @@ tracker:
   ckpt_path: src/submodules/cotracker/checkpoints/scaled_offline.pth
   window_len: 10
   grid_size: 60
-  sample_ratio: 6
-  overlap: 5
+  sample_ratio_grid: 6
+  sample_ratio_aliked: 1
+  overlap: 6
   query: aliked
   num_features: 4096
   viz: false
 
 keypoint_detector:
   num_features: 4096
+  viz: false
 
 keypoint_matcher:
   pair_generator: view
-  min_matches: 15
+  min_matches: 30
   verbose: false
   mask: true
+  filter_threshold: 0.5
