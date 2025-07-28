@@ -7,3 +7,6 @@
 [submodule "src/matching/tracking/optimize/third_party/HighFive"]
 	path = src/matching/tracking/optimize/third_party/HighFive
 	url = https://github.com/BlueBrain/HighFive.git
+[submodule "src/submodules/gim"]
+	path = src/submodules/gim
+	url = https://github.com/xuelunshen/gim
