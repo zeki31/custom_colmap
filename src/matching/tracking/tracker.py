@@ -45,7 +45,7 @@ class Tracker:
     def track(self, image_paths: list[Path], feature_dir: Path) -> None:
         """Execute the tracking process in parallel."""
         futures = []
-        with ProcessPoolExecutor(max_workers=3) as executor:
+        with ProcessPoolExecutor(max_workers=2) as executor:
             for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
                 sub_feature_dir = feature_dir / cam_name
                 if (sub_feature_dir / "full_trajs_aliked.npy").exists():

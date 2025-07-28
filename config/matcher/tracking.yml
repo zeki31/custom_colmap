@@ -6,7 +6,7 @@ tracker:
   grid_size: 60
   sample_ratio_grid: 6
   sample_ratio_aliked: 1
-  overlap: 6
+  overlap: 5
   query: aliked
   num_features: 4096
   viz: false

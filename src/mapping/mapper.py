@@ -26,11 +26,11 @@ class Mapper:
     def map(self, database_path: Path, base_dir: Path, save_dir: Path) -> None:
         # Compute RANSAC (detect match outliers)
         # By doing it exhaustively we guarantee we will find the best possible configuration
-        pycolmap.match_exhaustive(database_path)
-        # subprocess.run(
-        #     ["colmap", "exhaustive_matcher", "--database_path", str(database_path)],
-        #     check=True,
-        # )
+        # pycolmap.match_exhaustive(database_path)
+        subprocess.run(
+            ["colmap", "exhaustive_matcher", "--database_path", str(database_path)],
+            check=True,
+        )
 
         save_dir.mkdir(parents=True, exist_ok=True)
         # Incrementally start reconstructing the scene (sparse reconstruction)
@@ -40,38 +40,38 @@ class Mapper:
         output_dir = save_dir / "sparse"
         output_dir.mkdir(parents=True, exist_ok=True)
         if self.cfg.name == "colmap":
-            mapper_options = pycolmap.IncrementalPipelineOptions(
-                max_num_models=self.cfg.max_num_models,
-                min_model_size=self.cfg.min_model_size,
-                # num_threads=min(multiprocessing.cpu_count(), 64),
-            )
-            pycolmap.incremental_mapping(
-                database_path=database_path,
-                image_path=base_dir,
-                output_path=save_dir / "sparse",
-                options=mapper_options,
-            )
-            # cmd = [
-            #     "colmap",
-            #     "mapper",
-            #     "--database_path",
-            #     str(database_path),
-            #     "--image_path",
-            #     str(base_dir),
-            #     "--output_path",
-            #     str(output_dir),
-            #     "--Mapper.max_num_models",
-            #     str(self.cfg.max_num_models),
-            #     "--Mapper.min_model_size",
-            #     str(self.cfg.min_model_size),
-            #     "--Mapper.ba_use_gpu",
-            #     "1",
-            #     "--Mapper.ba_gpu_index",
-            #     "0,1",
-            #     # "--log_level",
-            #     # "2",
-            # ]
-            # subprocess.run(cmd)
+            # mapper_options = pycolmap.IncrementalPipelineOptions(
+            #     max_num_models=self.cfg.max_num_models,
+            #     min_model_size=self.cfg.min_model_size,
+            #     # num_threads=min(multiprocessing.cpu_count(), 64),
+            # )
+            # pycolmap.incremental_mapping(
+            #     database_path=database_path,
+            #     image_path=base_dir,
+            #     output_path=save_dir / "sparse",
+            #     options=mapper_options,
+            # )
+            cmd = [
+                "colmap",
+                "mapper",
+                "--database_path",
+                str(database_path),
+                "--image_path",
+                str(base_dir),
+                "--output_path",
+                str(output_dir),
+                "--Mapper.max_num_models",
+                str(self.cfg.max_num_models),
+                "--Mapper.min_model_size",
+                str(self.cfg.min_model_size),
+                "--Mapper.ba_use_gpu",
+                "1",
+                "--Mapper.ba_gpu_index",
+                "0,1",
+                # "--log_level",
+                # "2",
+            ]
+            subprocess.run(cmd)
         elif self.cfg.name == "glomap":
             cmd = [
                 "glomap",
