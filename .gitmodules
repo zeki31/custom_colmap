@@ -10,3 +10,6 @@
 [submodule "src/submodules/gim"]
 	path = src/submodules/gim
 	url = https://github.com/xuelunshen/gim
+[submodule "src/submodules/mast3r"]
+	path = src/submodules/mast3r
+	url = https://github.com/naver/mast3r
