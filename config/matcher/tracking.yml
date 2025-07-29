@@ -21,3 +21,4 @@ keypoint_matcher:
   verbose: false
   mask: true
   filter_threshold: 0.5
+  model_path: src/submodules/mast3r/downloads/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth

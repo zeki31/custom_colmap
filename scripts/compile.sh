@@ -88,3 +88,8 @@ cd ../..
 # cd ../../../..
 
 cd ..
+
+# DUST3R relies on RoPE positional embeddings for which you can compile some cuda kernels for faster runtime.
+cd src/submodules/mast3r/dust3r/croco/models/curope/
+python setup.py build_ext --inplace
+cd ../../../../../../../

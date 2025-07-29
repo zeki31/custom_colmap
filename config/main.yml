@@ -9,10 +9,10 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: nvs_30fps
-  name: ours
+  group: nvs_12fps
+  name: ours_lightglue
   id: null
-  mode: online
+  mode: offline
 
 retriever:
   img_dir_type: stream # images / frame / stream
@@ -21,7 +21,7 @@ retriever:
   duration: -1
   stride: 5
 
-  comp_ratio: 4
+  comp_ratio: 2
 
 mapper:
   name: colmap

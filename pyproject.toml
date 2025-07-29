@@ -25,4 +25,5 @@ dependencies = [
     "wandb>=0.21.0",
     "beartype>=0.21.0",
     "moviepy[ffmpeg]>=2.2.1",
+    "huggingface-hub>=0.34.2",
 ]

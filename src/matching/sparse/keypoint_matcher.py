@@ -2,7 +2,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import cv2
 import h5py
@@ -15,6 +15,7 @@ from jaxtyping import Float, Int, UInt
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+from src.matching.sparse.mast3r_sparse import MASt3RSparseMatcher
 from src.submodules.LightGlue.lightglue import viz2d
 from src.submodules.LightGlue.lightglue.utils import load_image
 
@@ -27,6 +28,7 @@ class KeypointMatcherCfg:
     verbose: bool = True
     mask: bool = False
     filter_threshold: float = 0.1
+    model_path: Optional[Path] = None
 
 
 class KeypointMatcher:
@@ -77,15 +79,23 @@ class KeypointMatcher:
         mask_img2: UInt[NDArray, "H W"],
         kpts1: Float[NDArray, "... 2"],
         kpts2: Float[NDArray, "... 2"],
-        descs1: Float[NDArray, "... 128"],
-        descs2: Float[NDArray, "... 128"],
-    ) -> tuple[
-        Float[NDArray, "... 2"],
-        Float[NDArray, "... 2"],
-        Float[NDArray, "... 128"],
-        Float[NDArray, "... 128"],
-        Int[NDArray, "..."],
-        Int[NDArray, "..."],
+        descs1: Optional[Float[NDArray, "... 128"]] = None,
+        descs2: Optional[Float[NDArray, "... 128"]] = None,
+    ) -> Union[
+        tuple[
+            Float[NDArray, "... 2"],
+            Float[NDArray, "... 2"],
+            Float[NDArray, "... 128"],
+            Float[NDArray, "... 128"],
+            Int[NDArray, "..."],
+            Int[NDArray, "..."],
+        ],
+        tuple[
+            Float[NDArray, "... 2"],
+            Float[NDArray, "... 2"],
+            Int[NDArray, "..."],
+            Int[NDArray, "..."],
+        ],
     ]:
         """Apply masks to keypoints and descriptors"""
         keep_idx1 = np.where(
@@ -96,9 +106,16 @@ class KeypointMatcher:
         )[0]
         kpts1_masked = kpts1[keep_idx1]
         kpts2_masked = kpts2[keep_idx2]
+        if descs1 is None or descs2 is None:
+            return (
+                kpts1_masked,
+                kpts2_masked,
+                keep_idx1,
+                keep_idx2,
+            )
+
         descs1_masked = descs1[keep_idx1]
         descs2_masked = descs2[keep_idx2]
-
         return (
             kpts1_masked,
             kpts2_masked,
@@ -275,6 +292,118 @@ class KeypointMatcher:
             #     plt.close()
 
             if len(indices):
+                matched_traj_ids = np.stack(
+                    [traj_ids1[indices[:, 0]], traj_ids2[indices[:, 1]]], axis=1
+                )
+                traj_pairs.extend(matched_traj_ids.tolist())
+
+        # if viz:
+        #     subprocess.run(
+        #         [
+        #             "ffmpeg",
+        #             "-y",
+        #             "-framerate",
+        #             "12",
+        #             "-i",
+        #             str(viz_dir / "%*.png"),
+        #             "-c:v",
+        #             "libx264",
+        #             str(viz_dir / "matches.mp4"),
+        #         ]
+        #     )
+        #     wandb.log(
+        #         {
+        #             "Matched Trajectories": wandb.Video(
+        #                 str(viz_dir / "matches.mp4"), format="mp4"
+        #             )
+        #         }
+        #     )
+        #     for img in viz_dir.glob("*.png"):
+        #         img.unlink()
+
+        return set(map(tuple, traj_pairs))
+
+    def match_trajectories_mast3r(
+        self,
+        index_pairs: list[tuple[int, int]],
+        i_proc: int,
+        kpts_per_img: dict[
+            int,
+            tuple[
+                Float[NDArray, "... 2"],
+                Float[NDArray, "... D"],
+                Int[NDArray, "..."],
+            ],
+        ],
+        # viz: bool = False,
+    ) -> set[tuple[int, int]]:
+        """Match trajectories in the different dynamic cameras."""
+        device = torch.device(
+            f"cuda:{i_proc % 2}" if torch.cuda.is_available() else "cpu"
+        )
+        _matcher = MASt3RSparseMatcher(
+            device, self.cfg.model_path, self.cfg.filter_threshold
+        )
+
+        # if viz:
+        #     viz_dir = self.save_dir / "matched_trajs_viz"
+        #     viz_dir.mkdir(parents=True, exist_ok=True)
+
+        traj_pairs = []
+        for idx1, idx2 in tqdm(
+            index_pairs, desc="Matching trajectories in different dynamic cameras"
+        ):
+            pth1, pth2 = self.paths[idx1], self.paths[idx2]
+            kpts1, _, traj_ids1 = kpts_per_img[idx1]
+            kpts2, _, traj_ids2 = kpts_per_img[idx2]
+
+            # origin_kpts1 = kpts1.copy()
+            # origin_kpts2 = kpts2.copy()
+
+            # Mask out keypoints in dynamic region before matching
+            if self.cfg.mask and idx1 % self.n_frames != idx2 % self.n_frames:
+                kpts1, kpts2, keep_idx1, keep_idx2 = self._masking(
+                    self.mask_imgs[idx1],
+                    self.mask_imgs[idx2],
+                    kpts1,
+                    kpts2,
+                )
+
+            indices = _matcher(
+                pth1,
+                pth2,
+                kpts1,
+                kpts2,
+            )
+            assert indices.shape[1] == 2, f"indices shape is {indices.shape}"
+            if self.cfg.mask and idx1 % self.n_frames != idx2 % self.n_frames:
+                indices = np.stack(
+                    [
+                        keep_idx1[indices[:, 0]],
+                        keep_idx2[indices[:, 1]],
+                    ],
+                    axis=1,
+                )
+
+            # image1 = load_image(self.paths[idx1])
+            # image2 = load_image(self.paths[idx2])
+            # viz2d.plot_images([image1, image2])
+            # viz2d.plot_matches(
+            #     origin_kpts1[indices[:, 0]],
+            #     origin_kpts2[indices[:, 1]],
+            #     color="lime",
+            #     lw=0.2,
+            # )
+            # key1_viz = self.paths[idx1].parts[-3] + "_" + self.paths[idx1].stem
+            # key2_viz = self.paths[idx2].parts[-3] + "_" + self.paths[idx2].stem
+            # viz2d.add_text(0, key1_viz, fs=20)
+            # viz2d.add_text(1, key2_viz, fs=20)
+            # viz_dir = self.save_dir / "matches_viz"
+            # viz_dir.mkdir(parents=True, exist_ok=True)
+            # viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+            # plt.close()
+
+            if len(indices) >= self.cfg.min_matches // 2:
                 matched_traj_ids = np.stack(
                     [traj_ids1[indices[:, 0]], traj_ids2[indices[:, 1]]], axis=1
                 )
