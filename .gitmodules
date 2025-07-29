@@ -13,3 +13,6 @@
 [submodule "src/submodules/mast3r"]
 	path = src/submodules/mast3r
 	url = https://github.com/naver/mast3r
+[submodule "src/submodules/alltracker"]
+	path = src/submodules/alltracker
+	url = https://github.com/aharley/alltracker
