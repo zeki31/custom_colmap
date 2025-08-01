@@ -14,6 +14,9 @@ wandb:
   id: null
   mode: online
 
+train: false
+viz: false
+
 retriever:
   img_dir_type: stream # images / frame / stream
   ext: jpg
@@ -27,3 +30,9 @@ mapper:
   name: colmap
   max_num_models: 2
   min_model_size: 3
+
+visualizer:
+  name: viser
+  filter: false
+  resize: 1
+  reorient_scene: true

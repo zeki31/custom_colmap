@@ -230,25 +230,17 @@ class IncrementalTrajectorySet(object):
                 self.active_trajs_aliked[i].extend(next_time, next_xy, next_desc)
                 new_active_trajs_aliked.append(self.active_trajs_aliked[i])
         # Handle the trajectories from the grid sampling
-        if frame_path is None:
-            for i in range(n_grid_queries):
-                next_xy, flag = (
-                    next_xys[i + n_aliked_queries],
-                    flags[i + n_aliked_queries],
-                )
-                if not flag:
-                    self.full_trajs_grid.append(self.active_trajs_grid[i])
-                else:
-                    occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
-                    self.active_trajs_grid[i].extend(next_time, next_xy)
-                    new_active_trajs_grid.append(self.active_trajs_grid[i])
-        else:
-            for i in range(n_grid_queries):
-                next_xy, flag = (
-                    next_xys[i + n_aliked_queries],
-                    flags[i + n_aliked_queries],
-                )
+        for i in range(n_grid_queries):
+            next_xy, flag = (
+                next_xys[i + n_aliked_queries],
+                flags[i + n_aliked_queries],
+            )
+            if not flag:
                 self.full_trajs_grid.append(self.active_trajs_grid[i])
+            else:
+                occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
+                self.active_trajs_grid[i].extend(next_time, next_xy)
+                new_active_trajs_grid.append(self.active_trajs_grid[i])
 
         self.active_trajs_aliked = new_active_trajs_aliked
         self.active_trajs_grid = new_active_trajs_grid
@@ -301,17 +293,36 @@ class IncrementalTrajectorySet(object):
         sample_map = (occupied_map_trans > self.ratio_grid)[
             :: self.ratio_grid, :: self.ratio_grid, 0
         ]
-        candidate_grid = np.copy(self.grid_all_candidates[sample_map])
+        active_pts_grid = self.get_cur_pos()
+        non_active_candidates_grid = np.copy(self.grid_all_candidates[sample_map])
+        curr_total = (
+            len(active_pts_grid)
+            + len(non_active_candidates_aliked)
+            + len(active_pts_grid)
+            + len(non_active_candidates_grid)
+        )
+
+        if curr_total > self.n_max_grid:
+            idx = np.random.choice(
+                non_active_candidates_grid.shape[0],
+                self.n_max_grid - curr_total,
+                replace=False,
+            )
+            non_active_candidates_grid = non_active_candidates_grid[idx]
+
         self.new_traj_all(
-            start_times=(np.ones(candidate_grid.shape[0]) * next_time).astype(int),
-            start_xys=candidate_grid,
+            start_times=(
+                np.ones(non_active_candidates_grid.shape[0]) * next_time
+            ).astype(int),
+            start_xys=non_active_candidates_grid,
         )
 
         self.sample_candidates = np.concatenate(
             [
                 active_pts_aliked,
                 non_active_candidates_aliked,
-                candidate_grid,
+                active_pts_grid,
+                non_active_candidates_grid,
             ],
             axis=0,
         )
