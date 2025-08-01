@@ -25,4 +25,6 @@ dependencies = [
     "wandb>=0.21.0",
     "beartype>=0.21.0",
     "moviepy[ffmpeg]>=2.2.1",
+    "rerun-sdk>=0.24.0",
+    "viser>=1.0.1",
 ]

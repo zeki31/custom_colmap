@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from src.mapping.mapper import MapperCfg
 from src.matching import MatcherCfg
 from src.matching.retriever import RetrieverCfg
+from visualization import VisualizerCfg
 
 
 @dataclass
@@ -29,9 +30,13 @@ class RootCfg:
 
     prior_dir: Optional[Path]
 
+    train: bool
+    viz: bool
+
     retriever: RetrieverCfg
     matcher: MatcherCfg
     mapper: MapperCfg
+    visualizer: VisualizerCfg
 
     def to_yaml(self, path: Path):
         """Save the configuration to a YAML file."""
@@ -65,7 +70,7 @@ TYPE_HOOKS = {
 }
 
 
-def load_typed_root_config(cfg_path: Path, overrides: Optional[list[str]]) -> RootCfg:
+def load_typed_root_config(cfg_path: Path, updates: Optional[list[str]]) -> RootCfg:
     cfg = OmegaConf.load(cfg_path)
 
     # Handle multiple config choices
@@ -77,8 +82,8 @@ def load_typed_root_config(cfg_path: Path, overrides: Optional[list[str]]) -> Ro
             subcfg = OmegaConf.load(subcfg_path)
             cfg[key] = subcfg
 
-    if overrides:
-        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(overrides))
+    if updates:
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(updates))
 
     return from_dict(
         RootCfg,

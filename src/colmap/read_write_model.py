@@ -32,6 +32,7 @@ import argparse
 import collections
 import os
 import struct
+from pathlib import Path
 
 import numpy as np
 
@@ -101,7 +102,7 @@ def write_next_bytes(fid, data, format_char_sequence, endian_character="<"):
     fid.write(bytes)
 
 
-def read_cameras_text(path):
+def read_cameras_text(path: Path) -> dict[int, Camera]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::WriteCamerasText(const std::string& path)
@@ -131,7 +132,7 @@ def read_cameras_text(path):
     return cameras
 
 
-def read_cameras_binary(path_to_model_file):
+def read_cameras_binary(path_to_model_file: Path) -> dict[int, Camera]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::WriteCamerasBinary(const std::string& path)
@@ -202,7 +203,7 @@ def write_cameras_binary(cameras, path_to_model_file):
     return cameras
 
 
-def read_images_text(path):
+def read_images_text(path: Path) -> dict[int, Image]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::ReadImagesText(const std::string& path)
@@ -242,7 +243,7 @@ def read_images_text(path):
     return images
 
 
-def read_images_binary(path_to_model_file):
+def read_images_binary(path_to_model_file: Path) -> dict[int, Image]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::ReadImagesBinary(const std::string& path)
@@ -353,7 +354,7 @@ def write_images_binary(images, path_to_model_file):
                 write_next_bytes(fid, [*xy, p3d_id], "ddq")
 
 
-def read_points3D_text(path):
+def read_points3D_text(path: Path) -> dict[int, Point3D]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::ReadPoints3DText(const std::string& path)
@@ -385,7 +386,7 @@ def read_points3D_text(path):
     return points3D
 
 
-def read_points3D_binary(path_to_model_file):
+def read_points3D_binary(path_to_model_file: Path) -> dict[int, Point3D]:
     """
     see: src/colmap/scene/reconstruction.cc
         void Reconstruction::ReadPoints3DBinary(const std::string& path)
@@ -473,7 +474,7 @@ def write_points3D_binary(points3D, path_to_model_file):
                 write_next_bytes(fid, [image_id, point2D_id], "ii")
 
 
-def detect_model_format(path, ext):
+def detect_model_format(path: Path, ext: str) -> bool:
     if (
         os.path.isfile(os.path.join(path, "cameras" + ext))
         and os.path.isfile(os.path.join(path, "images" + ext))
@@ -485,7 +486,9 @@ def detect_model_format(path, ext):
     return False
 
 
-def read_model(path, ext=""):
+def read_model(
+    path: Path, ext: str = ""
+) -> tuple[dict[int, Camera], dict[int, Image], dict[int, Point3D]]:
     # try to detect the extension automatically
     if ext == "":
         if detect_model_format(path, ".bin"):
@@ -497,13 +500,13 @@ def read_model(path, ext=""):
             return
 
     if ext == ".txt":
-        cameras = read_cameras_text(os.path.join(path, "cameras" + ext))
-        images = read_images_text(os.path.join(path, "images" + ext))
-        points3D = read_points3D_text(os.path.join(path, "points3D") + ext)
+        cameras = read_cameras_text(path / ("cameras" + ext))
+        images = read_images_text(path / ("images" + ext))
+        points3D = read_points3D_text(path / ("points3D" + ext))
     else:
-        cameras = read_cameras_binary(os.path.join(path, "cameras" + ext))
-        images = read_images_binary(os.path.join(path, "images" + ext))
-        points3D = read_points3D_binary(os.path.join(path, "points3D") + ext)
+        cameras = read_cameras_binary(path / ("cameras" + ext))
+        images = read_images_binary(path / ("images" + ext))
+        points3D = read_points3D_binary(path / ("points3D" + ext))
     return cameras, images, points3D
 
 

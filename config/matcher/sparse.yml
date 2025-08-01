@@ -9,3 +9,4 @@ keypoint_matcher:
   min_matches: 15
   verbose: false
   mask: true
+  filter_threshold: 0.5
