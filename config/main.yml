@@ -9,12 +9,12 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: nvs_30fps
-  name: ours
+  group: ours_v3
+  name: lane_running
   id: null
   mode: online
 
-train: false
+train: true
 viz: false
 
 retriever:
@@ -24,7 +24,7 @@ retriever:
   duration: -1
   stride: 5
 
-  comp_ratio: 4
+  comp_ratio: 2
 
 mapper:
   name: colmap

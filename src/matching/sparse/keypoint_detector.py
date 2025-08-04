@@ -102,8 +102,8 @@ class KeypointDetector:
             for path in paths
         ]
         merged_mask = mask_imgs[0]
-        for mask in mask_imgs:
-            merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
+        # for mask in mask_imgs:
+        #     merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
 
         with h5py.File(
             feature_dir / "keypoints.h5", mode="r+"
@@ -262,8 +262,8 @@ class KeypointDetector:
             for path in paths
         ]
         merged_mask = mask_imgs[0]
-        for mask in mask_imgs:
-            merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
+        # for mask in mask_imgs:
+        #     merged_mask = np.logical_or(merged_mask, mask).astype(np.uint8) * 255
 
         if viz:
             cv2.imwrite(save_dir / "mask.png", merged_mask)

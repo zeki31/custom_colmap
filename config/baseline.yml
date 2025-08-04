@@ -9,9 +9,12 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: main
+  group: baseline
   name: ours
   mode: online
+
+train: true
+viz: false
 
 retriever:
   img_dir_type: stream # images / frame / stream
@@ -20,9 +23,15 @@ retriever:
   duration: -1
   stride: 5
 
-  comp_ratio: 4
+  comp_ratio: 2
 
 mapper:
   name: colmap
   max_num_models: 2
   min_model_size: 3
+
+visualizer:
+  name: viser
+  filter: false
+  resize: 1
+  reorient_scene: true

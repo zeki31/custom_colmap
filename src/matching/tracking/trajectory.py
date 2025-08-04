@@ -105,7 +105,7 @@ class IncrementalTrajectorySet(object):
             :: self.ratio_grid, :: self.ratio_grid, 0
         ]
         candidate_grid = np.copy(self.grid_all_candidates[sample_map])
-        self.n_max_grid = 3600
+        self.n_max_grid = 3600 * 4
         print(
             "ALIKED candidates:",
             candidate_kpts.shape[0],
@@ -295,20 +295,20 @@ class IncrementalTrajectorySet(object):
         ]
         active_pts_grid = self.get_cur_pos()
         non_active_candidates_grid = np.copy(self.grid_all_candidates[sample_map])
-        curr_total = (
-            len(active_pts_grid)
-            + len(non_active_candidates_aliked)
-            + len(active_pts_grid)
-            + len(non_active_candidates_grid)
-        )
 
-        if curr_total > self.n_max_grid:
-            idx = np.random.choice(
-                non_active_candidates_grid.shape[0],
-                self.n_max_grid - curr_total,
-                replace=False,
-            )
-            non_active_candidates_grid = non_active_candidates_grid[idx]
+        # curr_total = (
+        #     len(active_pts_grid)
+        #     + len(non_active_candidates_aliked)
+        #     + len(active_pts_grid)
+        #     + len(non_active_candidates_grid)
+        # )
+        # if curr_total > self.n_max_grid:
+        #     idx = np.random.choice(
+        #         non_active_candidates_grid.shape[0],
+        #         self.n_max_grid - curr_total,
+        #         replace=False,
+        #     )
+        #     non_active_candidates_grid = non_active_candidates_grid[idx]
 
         self.new_traj_all(
             start_times=(

@@ -55,7 +55,7 @@ class MatcherSparse(Matcher[MatcherSparseCfg]):
         _ = self.matcher.multiprocess(
             self.matcher.match_keypoints,
             index_pairs,
-            n_cpu=10,
+            n_cpu=8,
             cond=(self.feature_dir / "matches_0.h5").exists(),
         )
 
