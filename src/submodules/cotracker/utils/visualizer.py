@@ -280,7 +280,7 @@ class Visualizer:
                         img = draw_circle(
                             img,
                             coord=coord,
-                            radius=int(self.linewidth * 2),
+                            radius=int(self.linewidth),
                             color=vector_colors[t, i].astype(int),
                             visible=visibile,
                             color_alpha=color_alpha,

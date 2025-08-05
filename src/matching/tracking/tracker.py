@@ -26,7 +26,7 @@ class TrackerCfg:
     sample_ratio_aliked: int = 1
     traj_min_len: int = 2
     overlap: int = 2
-    query: Literal["grid", "aliked"] = "grid"
+    query: Literal["grid", "aliked", "grid+aliked"] = "grid"
     num_features: int = 4096
     viz: bool = False
 
@@ -76,6 +76,7 @@ class Tracker:
             self.viz_dir.mkdir(parents=True, exist_ok=True)
 
         gpu_id = 0 if i_proc % 2 else 1
+        # gpu_id = i_proc - 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
         h, w = cv2.imread(image_paths[0]).shape[:2]
