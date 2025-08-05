@@ -9,10 +9,10 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: ours_v3
+  group: ours_reset_aliked_res2
   name: lane_running
   id: null
-  mode: online
+  mode: offline
 
 train: true
 viz: false

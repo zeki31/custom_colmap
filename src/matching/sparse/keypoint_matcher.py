@@ -393,3 +393,54 @@ class KeypointMatcher:
         #     )
         #     for img in viz_dir.glob("*.png"):
         #         img.unlink()
+
+    def traj2npy(
+        self,
+        index_pairs: list[tuple[int, int]],
+        feature_dir: Path,
+        kpts_per_img: dict[
+            int,
+            tuple[
+                Float[NDArray, "... 2"],
+                Optional[Float[NDArray, "... D"]],
+                Int[NDArray, "..."],
+            ],
+        ],
+    ) -> None:
+        """Match keypoints in the dynamic cameras exhaustively."""
+        for idx1, idx2 in tqdm(index_pairs, desc="Converting trajectories to matches"):
+            seq1 = self.paths[idx1].parts[-3]
+            seq2 = self.paths[idx2].parts[-3]
+            assert seq1 == seq2, f"{seq1} and {seq2} must be the same."
+
+            kpts1, _, traj_ids1 = kpts_per_img[idx1]
+            kpts2, _, traj_ids2 = kpts_per_img[idx2]
+            _, idx1_of_common, idx2_of_common = np.intersect1d(
+                traj_ids1, traj_ids2, assume_unique=True, return_indices=True
+            )
+            indices = np.stack([idx1_of_common, idx2_of_common], axis=1)
+
+            # Mask out keypoints that are in a dynamic region
+            if self.cfg.mask:
+                mask1 = self.mask_imgs[idx1]
+                mask2 = self.mask_imgs[idx2]
+                m_kpts1 = kpts1[indices[:, 0]]
+                m_kpts2 = kpts2[indices[:, 1]]
+                mask_val1 = mask1[m_kpts1[:, 1].astype(int), m_kpts1[:, 0].astype(int)]
+                mask_val2 = mask2[m_kpts2[:, 1].astype(int), m_kpts2[:, 0].astype(int)]
+                indices_static = indices[(mask_val1 == 0) & (mask_val2 == 0)].copy()
+                indices_dynamic = indices[(mask_val1 > 0) & (mask_val2 > 0)].copy()
+
+            save_dir = feature_dir / seq1 / "bootscotracker_static"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            np.save(
+                save_dir / f"{self.paths[idx1].stem}_{self.paths[idx2].stem}.npy",
+                kpts2[indices_static[:, 1]],
+            )
+
+            save_dir = feature_dir / seq1 / "bootscotracker_dynamic"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            np.save(
+                save_dir / f"{self.paths[idx1].stem}_{self.paths[idx2].stem}.npy",
+                kpts2[indices_dynamic[:, 1]],
+            )

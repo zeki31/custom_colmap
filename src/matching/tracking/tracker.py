@@ -26,7 +26,7 @@ class TrackerCfg:
     sample_ratio_aliked: int = 1
     traj_min_len: int = 2
     overlap: int = 2
-    query: Literal["grid", "aliked"] = "grid"
+    query: Literal["grid", "aliked", "grid+aliked"] = "grid"
     num_features: int = 4096
     viz: bool = False
 
@@ -76,6 +76,7 @@ class Tracker:
             self.viz_dir.mkdir(parents=True, exist_ok=True)
 
         gpu_id = 0 if i_proc % 2 else 1
+        # gpu_id = i_proc - 1
         device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
 
         h, w = cv2.imread(image_paths[0]).shape[:2]
@@ -101,7 +102,9 @@ class Tracker:
 
         start_t = 0
         stride = self.cfg.window_len - self.cfg.overlap
-        n_aliked_queries = trajs.candidate_desc.shape[0]
+        n_aliked_queries = (
+            trajs.candidate_desc.shape[0] if "aliked" in self.cfg.query else 0
+        )
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
                 end_t = start_t + self.cfg.window_len
@@ -193,9 +196,9 @@ class Tracker:
                             next_time=frame_id + 1,
                             flags=pred_visibility[timestep + 1][viz_mask]
                             & valid_cond_next,
-                            next_descs=trajs.candidate_desc[
-                                viz_mask[:n_aliked_queries]
-                            ],
+                            next_descs=trajs.candidate_desc[viz_mask[:n_aliked_queries]]
+                            if "aliked" in self.cfg.query
+                            else None,
                             frame_path=image_paths[start_t + timestep + 1]
                             if start_t + timestep + 1 <= len(image_paths)
                             else image_paths[-1],
@@ -206,9 +209,9 @@ class Tracker:
                             next_time=frame_id + 1,
                             flags=pred_visibility[timestep + 1][viz_mask]
                             & valid_cond_next,
-                            next_descs=trajs.candidate_desc[
-                                viz_mask[:n_aliked_queries]
-                            ],
+                            next_descs=trajs.candidate_desc[viz_mask[:n_aliked_queries]]
+                            if "aliked" in self.cfg.query
+                            else None,
                         )
 
                 start_t += (

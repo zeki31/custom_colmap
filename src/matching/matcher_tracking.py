@@ -66,76 +66,83 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
         torch.cuda.empty_cache()
         gc.collect()
 
-        self.detector.track_fixed(
-            self.paths[: len(self.paths) // 4],
-            feature_dir=self.feature_dir,
-            viz=True,
-        )
-
         print("Merging trajectories from all cameras...")
         full_trajs_aliked = []
         full_trajs_grid = []
-        for cam_name in ["1_fixed", "2_dynA", "3_dynB", "4_dynC"]:
+        for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
             trajs_aliked = np.load(
                 self.feature_dir / cam_name / "full_trajs_aliked.npy", allow_pickle=True
             )
             full_trajs_aliked.extend(trajs_aliked)
-            if cam_name == "1_fixed":
-                continue
+
             trajs_grid = np.load(
                 self.feature_dir / cam_name / "full_trajs_grid.npy", allow_pickle=True
             )
             full_trajs_grid.extend(trajs_grid)
-        # Build TrajectorySet
-        dict_trajs_aliked = {}
-        for idx, traj in enumerate(full_trajs_aliked):
-            dict_trajs_aliked[idx] = traj
-        trajectories = TrajectorySet(dict_trajs_aliked)
-        trajectories.build_invert_indexes()
 
-        kpts_per_img = self.detector.register_keypoints(
-            self.paths,
-            self.feature_dir,
-            trajectories,
-            only_aliked=True,
-            viz=self.cfg.keypoint_detector.viz,
-        )
-        torch.cuda.empty_cache()
-        gc.collect()
+        if full_trajs_aliked:
+            trajs_fixed = self.detector.track_fixed(
+                self.paths[: len(self.paths) // 4],
+                feature_dir=self.feature_dir,
+                viz=True,
+            )
+            full_trajs_aliked.extend(trajs_fixed)
 
-        index_pairs = self.retriever.get_index_pairs(
-            self.paths,
-            "exhaustive_keyframe_excluding_same_view",
-            self.stride,
-        )
-        traj_pairs_list = self.matcher.multiprocess(
-            self.matcher.match_trajectories,
-            index_pairs,
-            2,
-            (self.feature_dir / "matches_0.h5").exists(),
-            kpts_per_img,
-        )
-        traj_pairs = {pair for pairs_set in traj_pairs_list for pair in pairs_set}
-        torch.cuda.empty_cache()
-        gc.collect()
+            dict_trajs_aliked = {}
+            for idx, traj in enumerate(full_trajs_aliked):
+                dict_trajs_aliked[idx] = traj
+            trajectories = TrajectorySet(dict_trajs_aliked)
+            trajectories.build_invert_indexes()
 
-        trajs = trajectories.trajs
-        max_id = max(trajs.keys())
-        uf = UnionFind(len(trajs))
-        for traj_id1, traj_id2 in tqdm(traj_pairs, desc="Extending trajectories"):
-            uf.union(traj_id1, traj_id2)
-        for traj_id in tqdm(trajs.copy(), desc="Merging trajectories"):
-            root_traj_id = uf.root(traj_id)
-            if root_traj_id == traj_id:
-                continue
-            traj = trajs.pop(traj_id)
-            trajs[root_traj_id].xys.extend(traj.xys)
-            trajs[root_traj_id].descs.extend(traj.descs)
-            trajs[root_traj_id].times.extend(traj.times)
-        # Add grid trajectories
-        for idx, traj in enumerate(full_trajs_grid, start=max_id + 1):
-            trajs[idx] = traj
-        trajectories = TrajectorySet(trajs)
+            kpts_per_img = self.detector.register_keypoints(
+                self.paths,
+                self.feature_dir,
+                trajectories,
+                only_aliked=True,
+                viz=self.cfg.keypoint_detector.viz,
+            )
+            torch.cuda.empty_cache()
+            gc.collect()
+
+            index_pairs = self.retriever.get_index_pairs(
+                self.paths,
+                "exhaustive_keyframe_excluding_same_view",
+                self.stride,
+            )
+            traj_pairs_list = self.matcher.multiprocess(
+                self.matcher.match_trajectories,
+                index_pairs,
+                2,
+                (self.feature_dir / "matches_0.h5").exists(),
+                kpts_per_img,
+            )
+            traj_pairs = {pair for pairs_set in traj_pairs_list for pair in pairs_set}
+            torch.cuda.empty_cache()
+            gc.collect()
+
+            trajs = trajectories.trajs
+            max_id = max(trajs.keys())
+            uf = UnionFind(len(trajs))
+            for traj_id1, traj_id2 in tqdm(traj_pairs, desc="Extending trajectories"):
+                uf.union(traj_id1, traj_id2)
+            for traj_id in tqdm(trajs.copy(), desc="Merging trajectories"):
+                root_traj_id = uf.root(traj_id)
+                if root_traj_id == traj_id:
+                    continue
+                traj = trajs.pop(traj_id)
+                trajs[root_traj_id].xys.extend(traj.xys)
+                trajs[root_traj_id].descs.extend(traj.descs)
+                trajs[root_traj_id].times.extend(traj.times)
+            # Add grid trajectories
+            for idx, traj in enumerate(full_trajs_grid, start=max_id + 1):
+                trajs[idx] = traj
+            trajectories = TrajectorySet(trajs)
+        else:
+            dict_trajs = {}
+            for idx, traj in enumerate(full_trajs_grid):
+                dict_trajs[idx] = traj
+            trajectories = TrajectorySet(dict_trajs)
+
         trajectories.build_invert_indexes()
 
         print("Register keypoints again to update traj_ids...")
@@ -147,18 +154,30 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             viz=self.cfg.keypoint_detector.viz,
         )
         gc.collect()
-        index_pairs = self.retriever.get_index_pairs(
-            self.paths,
-            "exhaustive_dynamic",
-            self.stride,
-        )
-        _ = self.matcher.multiprocess(
-            self.matcher.traj2match,
-            index_pairs,
-            4,
-            (self.feature_dir / "matches_0.h5").exists(),
-            kpts_per_img,
-        )
+        if self.cfg.tracker.query == "grid":
+            index_pairs = self.retriever.get_index_pairs(
+                self.paths,
+                "frame",
+            )
+            self.matcher.traj2npy(
+                index_pairs,
+                self.feature_dir,
+                kpts_per_img,
+            )
+            exit()
+        else:
+            index_pairs = self.retriever.get_index_pairs(
+                self.paths,
+                "exhaustive_dynamic",
+                self.stride,
+            )
+            _ = self.matcher.multiprocess(
+                self.matcher.traj2match,
+                index_pairs,
+                4,
+                (self.feature_dir / "matches_0.h5").exists(),
+                kpts_per_img,
+            )
         gc.collect()
 
         end = time()

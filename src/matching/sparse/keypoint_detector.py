@@ -245,7 +245,7 @@ class KeypointDetector:
         paths: list[Path],
         feature_dir: Path,
         viz: bool = False,
-    ) -> None:
+    ) -> list[Trajectory]:
         """Detects the keypoints in a list of images with ALIKED"""
         save_dir = feature_dir / "1_fixed"
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -305,4 +305,5 @@ class KeypointDetector:
         for kpts, descs in tzip(kpts_masked, descs_masked):
             traj = Trajectory(0, kpts, descs)
             full_trajs.append(traj)
-        np.save(save_dir / "full_trajs_aliked.npy", full_trajs)
+
+        return full_trajs
