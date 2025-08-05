@@ -101,7 +101,9 @@ class Tracker:
 
         start_t = 0
         stride = self.cfg.window_len - self.cfg.overlap
-        n_aliked_queries = trajs.candidate_desc.shape[0]
+        n_aliked_queries = (
+            trajs.candidate_desc.shape[0] if "aliked" in self.cfg.query else 0
+        )
         with tqdm(total=len(image_paths) // stride + 1) as pbar:
             while start_t < len(image_paths):
                 end_t = start_t + self.cfg.window_len
@@ -193,9 +195,9 @@ class Tracker:
                             next_time=frame_id + 1,
                             flags=pred_visibility[timestep + 1][viz_mask]
                             & valid_cond_next,
-                            next_descs=trajs.candidate_desc[
-                                viz_mask[:n_aliked_queries]
-                            ],
+                            next_descs=trajs.candidate_desc[viz_mask[:n_aliked_queries]]
+                            if "aliked" in self.cfg.query
+                            else None,
                             frame_path=image_paths[start_t + timestep + 1]
                             if start_t + timestep + 1 <= len(image_paths)
                             else image_paths[-1],
@@ -206,9 +208,9 @@ class Tracker:
                             next_time=frame_id + 1,
                             flags=pred_visibility[timestep + 1][viz_mask]
                             & valid_cond_next,
-                            next_descs=trajs.candidate_desc[
-                                viz_mask[:n_aliked_queries]
-                            ],
+                            next_descs=trajs.candidate_desc[viz_mask[:n_aliked_queries]]
+                            if "aliked" in self.cfg.query
+                            else None,
                         )
 
                 start_t += (
