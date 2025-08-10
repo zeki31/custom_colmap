@@ -28,7 +28,13 @@ class Mapper:
         # By doing it exhaustively we guarantee we will find the best possible configuration
         # pycolmap.match_exhaustive(database_path)
         subprocess.run(
-            ["colmap", "exhaustive_matcher", "--database_path", str(database_path)],
+            [
+                "colmap",
+                "exhaustive_matcher",
+                "--database_path",
+                str(database_path),
+                "--SiftMatching.gpu_index=0,1",
+            ],
             check=True,
         )
 

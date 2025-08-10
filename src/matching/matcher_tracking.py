@@ -5,7 +5,7 @@ from pathlib import Path
 from time import time
 from typing import Literal
 
-import numpy as np
+import h5py
 import torch
 import wandb
 from tqdm import tqdm
@@ -15,7 +15,7 @@ from src.matching.retriever import Retriever
 from src.matching.sparse.keypoint_detector import KeypointDetector, KeypointDetectorCfg
 from src.matching.sparse.keypoint_matcher import KeypointMatcher, KeypointMatcherCfg
 from src.matching.tracking.tracker import Tracker, TrackerCfg
-from src.matching.tracking.trajectory import TrajectorySet
+from src.matching.tracking.trajectory import TrajectorySet, TrajectoryTmp
 from src.matching.tracking.union_find import UnionFind
 
 mp.set_start_method("spawn", force=True)
@@ -59,48 +59,36 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
 
         start = time()
 
-        self.tracker.track(self.paths, self.feature_dir)
+        traj_pairs_list = self.tracker.multiprocess(
+            self.tracker.track,
+            self.paths,
+            2,
+            (self.feature_dir / "trajs_aliked_1.h5").exists(),
+            self.feature_dir,
+        )
         lap_tracking = time()
         print(f"Tracking completed in {(lap_tracking - start) // 60:.2f} minutes.")
         self.logger.summary["Tracking time (min)"] = (lap_tracking - start) // 60
         torch.cuda.empty_cache()
         gc.collect()
 
-        print("Merging trajectories from all cameras...")
-        full_trajs_aliked = []
-        full_trajs_grid = []
-        for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
-            trajs_aliked = np.load(
-                self.feature_dir / cam_name / "full_trajs_aliked.npy", allow_pickle=True
-            )
-            full_trajs_aliked.extend(trajs_aliked)
-
-            trajs_grid = np.load(
-                self.feature_dir / cam_name / "full_trajs_grid.npy", allow_pickle=True
-            )
-            full_trajs_grid.extend(trajs_grid)
-
-        if full_trajs_aliked:
-            trajs_fixed = self.detector.track_fixed(
+        if "aliked" in self.tracker.cfg.query:
+            self.detector.track_fixed(
                 self.paths[: len(self.paths) // 4],
                 feature_dir=self.feature_dir,
                 viz=True,
             )
-            full_trajs_aliked.extend(trajs_fixed)
 
-            dict_trajs_aliked = {}
-            for idx, traj in enumerate(full_trajs_aliked):
-                dict_trajs_aliked[idx] = traj
-            trajectories = TrajectorySet(dict_trajs_aliked)
+            trajectories = self._create_full_trajs("aliked")
             trajectories.build_invert_indexes()
-
-            kpts_per_img = self.detector.register_keypoints(
+            self.detector.register_keypoints(
                 self.paths,
                 self.feature_dir,
                 trajectories,
                 only_aliked=True,
                 viz=self.cfg.keypoint_detector.viz,
             )
+            del trajectories
             torch.cuda.empty_cache()
             gc.collect()
 
@@ -112,15 +100,14 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             traj_pairs_list = self.matcher.multiprocess(
                 self.matcher.match_trajectories,
                 index_pairs,
-                2,
+                4,
                 (self.feature_dir / "matches_0.h5").exists(),
-                kpts_per_img,
             )
             traj_pairs = {pair for pairs_set in traj_pairs_list for pair in pairs_set}
             torch.cuda.empty_cache()
             gc.collect()
 
-            trajs = trajectories.trajs
+            trajs = self._create_full_trajs("aliked").trajs
             max_id = max(trajs.keys())
             uf = UnionFind(len(trajs))
             for traj_id1, traj_id2 in tqdm(traj_pairs, desc="Extending trajectories"):
@@ -134,25 +121,28 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 trajs[root_traj_id].descs.extend(traj.descs)
                 trajs[root_traj_id].times.extend(traj.times)
             # Add grid trajectories
-            for idx, traj in enumerate(full_trajs_grid, start=max_id + 1):
+            trajs_grid = self._create_full_trajs("grid").trajs
+            for idx, traj in enumerate(trajs_grid.values(), start=max_id + 1):
                 trajs[idx] = traj
             trajectories = TrajectorySet(trajs)
         else:
             dict_trajs = {}
-            for idx, traj in enumerate(full_trajs_grid):
+            trajs_grid = self._create_full_trajs("grid").trajs
+            for idx, traj in enumerate(trajs_grid.values()):
                 dict_trajs[idx] = traj
             trajectories = TrajectorySet(dict_trajs)
 
         trajectories.build_invert_indexes()
 
         print("Register keypoints again to update traj_ids...")
-        kpts_per_img = self.detector.register_keypoints(
+        self.detector.register_keypoints(
             self.paths,
             self.feature_dir,
             trajectories,
             only_aliked=False,
             viz=self.cfg.keypoint_detector.viz,
         )
+        del trajectories
         gc.collect()
         if self.cfg.tracker.query == "grid":
             index_pairs = self.retriever.get_index_pairs(
@@ -162,7 +152,6 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             self.matcher.traj2npy(
                 index_pairs,
                 self.feature_dir,
-                kpts_per_img,
             )
             exit()
         else:
@@ -176,9 +165,32 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
                 index_pairs,
                 4,
                 (self.feature_dir / "matches_0.h5").exists(),
-                kpts_per_img,
             )
         gc.collect()
 
         end = time()
         self.logger.log({"Matching time (min)": (end - start) // 60})
+
+    def _create_full_trajs(self, suffix: Literal["aliked", "grid"]) -> TrajectorySet:
+        last_traj_id = 0
+        dict_trajs = {}
+        for traj_file in self.feature_dir.glob(f"trajs_{suffix}_*.h5"):
+            with h5py.File(traj_file, mode="r") as f_trajs:
+                for key in f_trajs.keys():
+                    group = f_trajs[key]
+                    if suffix == "aliked":
+                        traj = TrajectoryTmp(
+                            xys=list(group["xys"][()]),
+                            times=list(group["times"][()]),
+                            descs=list(group["descs"][()]),
+                        )
+                    else:
+                        traj = TrajectoryTmp(
+                            xys=list(group["xys"][()]),
+                            times=list(group["times"][()]),
+                        )
+
+                    dict_trajs[int(key) + last_traj_id] = traj
+                last_traj_id = max(dict_trajs.keys()) + 1
+
+        return TrajectorySet(dict_trajs)

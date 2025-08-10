@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import cv2
+import h5py
 import numpy as np
 import torch
 import wandb
@@ -42,33 +43,37 @@ class Tracker:
         self.logger = logger
         self.save_dir = save_dir
 
-    def track(self, image_paths: list[Path], feature_dir: Path) -> None:
-        """Execute the tracking process in parallel."""
-        futures = []
-        with ProcessPoolExecutor(max_workers=2) as executor:
-            for i_proc, cam_name in enumerate(["2_dynA", "3_dynB", "4_dynC"]):
-                sub_feature_dir = feature_dir / cam_name
-                if (sub_feature_dir / "full_trajs_aliked.npy").exists():
-                    print(f"Skipping {cam_name} as it already exists.")
-                    continue
+    def multiprocess(
+        self,
+        func,
+        paths: list[Path],
+        n_cpu: int,
+        cond: bool = False,
+        *args,
+    ):
+        """Run a function in parallel with multiple processes."""
+        if cond:
+            return
 
-                sub_feature_dir.mkdir(parents=True, exist_ok=True)
-                sub_image_paths = [
-                    image_path
-                    for image_path in image_paths
-                    if cam_name in str(image_path)
-                ]
+        chunks = []
+        for cam_name in ["2_dynA", "3_dynB", "4_dynC"]:
+            sub_image_paths = [
+                image_path for image_path in paths if cam_name in str(image_path)
+            ]
+            chunks.append(sub_image_paths)
 
-                future = executor.submit(
-                    self.track_point, sub_image_paths, sub_feature_dir, i_proc + 1
-                )
-                futures.append(future)
-                print(f"Chunk {i_proc + 1}/3 submitted.")
+        with ProcessPoolExecutor(max_workers=n_cpu) as executor:
+            futures = [
+                executor.submit(func, chunk, i_proc + 1, *args)
+                for i_proc, chunk in enumerate(chunks)
+            ]
+            return [f.result() for f in futures]
 
-            _ = [f.result() for f in futures]
-
-    def track_point(
-        self, image_paths: list[Path], feature_dir: Path, i_proc: int
+    def track(
+        self,
+        image_paths: list[Path],
+        i_proc: int,
+        feature_dir: Path,
     ) -> None:
         """Track point trajectories in the given frames."""
         if self.cfg.viz:
@@ -224,8 +229,24 @@ class Tracker:
 
             trajs.clear_active()
 
-        np.save(feature_dir / "full_trajs_grid.npy", trajs.full_trajs_grid)
-        np.save(feature_dir / "full_trajs_aliked.npy", trajs.full_trajs_aliked)
+        with h5py.File(
+            feature_dir / f"trajs_aliked_{i_proc}.h5", mode="w"
+        ) as f_trajs_aliked:
+            for idx, traj in enumerate(trajs.full_trajs_aliked):
+                group = f_trajs_aliked.create_group(str(idx))
+                group.create_dataset("xys", data=np.array(traj.xys))
+                group.create_dataset("descs", data=np.array(traj.descs))
+                group.create_dataset("times", data=np.array(traj.times))
+
+        with h5py.File(
+            feature_dir / f"trajs_grid_{i_proc}.h5", mode="w"
+        ) as f_trajs_grid:
+            for idx, traj in enumerate(trajs.full_trajs_grid):
+                group = f_trajs_grid.create_group(str(idx))
+                group.create_dataset("xys", data=np.array(traj.xys))
+                group.create_dataset("times", data=np.array(traj.times))
+
+        del trajs
 
         if self.cfg.viz and i_proc == 1:
             mp4_files = sorted(self.viz_dir.glob("*.mp4"))

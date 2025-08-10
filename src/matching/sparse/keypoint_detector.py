@@ -1,7 +1,7 @@
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import cv2
 import h5py
@@ -10,10 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
-from jaxtyping import Float, Int
-from numpy.typing import NDArray
 from tqdm import tqdm
-from tqdm.contrib import tzip
+from tqdm.contrib import tenumerate
 
 from src.matching.tracking.trajectory import Trajectory, TrajectorySet
 from src.submodules.LightGlue.lightglue import ALIKED, viz2d
@@ -133,14 +131,7 @@ class KeypointDetector:
         trajectories: TrajectorySet,
         only_aliked: bool,
         viz: bool = False,
-    ) -> dict[
-        int,
-        tuple[
-            Float[NDArray, "... 2"],
-            Optional[Float[NDArray, "... D"]],
-            Int[NDArray, "..."],
-        ],
-    ]:
+    ) -> None:
         """Detects the keypoints in a list of images with ALIKED
 
         Stores them in feature_dir/keypoints.h5 and feature_dir/descriptors.h5
@@ -154,8 +145,9 @@ class KeypointDetector:
             feature_dir / "keypoints.h5", mode="w"
         ) as f_keypoints, h5py.File(
             feature_dir / "descriptors.h5", mode="w"
-        ) as f_descriptors:
-            kpts_per_img = {}
+        ) as f_descriptors, h5py.File(
+            feature_dir / "traj_ids.h5", mode="w"
+        ) as f_traj_ids:
             for frame_id, trajs_dict in tqdm(
                 sorted(trajectories.invert_maps.items()), desc="Registering keypoints"
             ):
@@ -172,6 +164,7 @@ class KeypointDetector:
                 kpts_np = np.stack(kpts, dtype=np.float32)
                 if only_aliked:
                     descs_np = np.stack(descs, dtype=np.float32)
+                traj_ids_np = np.array(traj_ids, dtype=int)
 
                 if viz:
                     image0 = load_image(paths[frame_id])
@@ -186,11 +179,7 @@ class KeypointDetector:
                 f_keypoints[key] = kpts_np
                 if only_aliked:
                     f_descriptors[key] = descs_np
-                kpts_per_img[int(frame_id)] = (
-                    kpts_np,
-                    descs_np if only_aliked else None,
-                    np.array(traj_ids, dtype=int),
-                )
+                f_traj_ids[str(frame_id)] = traj_ids_np
 
         if viz:
             if only_aliked:
@@ -238,14 +227,12 @@ class KeypointDetector:
             for img in viz_dir.glob("*.png"):
                 img.unlink()
 
-        return kpts_per_img
-
     def track_fixed(
         self,
         paths: list[Path],
         feature_dir: Path,
         viz: bool = False,
-    ) -> list[Trajectory]:
+    ) -> None:
         """Detects the keypoints in a list of images with ALIKED"""
         save_dir = feature_dir / "1_fixed"
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -301,9 +288,10 @@ class KeypointDetector:
                     }
                 )
 
-        full_trajs = []
-        for kpts, descs in tzip(kpts_masked, descs_masked):
-            traj = Trajectory(0, kpts, descs)
-            full_trajs.append(traj)
-
-        return full_trajs
+        with h5py.File(feature_dir / "trajs_aliked_0.h5", mode="w") as f_trajs_aliked:
+            for idx, (kpts, descs) in tenumerate(zip(kpts_masked, descs_masked)):
+                traj = Trajectory(0, kpts, descs)
+                group = f_trajs_aliked.create_group(str(idx))
+                group.create_dataset("xys", data=np.array(traj.xys))
+                group.create_dataset("descs", data=np.array(traj.descs))
+                group.create_dataset("times", data=np.array(traj.times))

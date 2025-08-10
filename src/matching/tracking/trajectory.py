@@ -411,6 +411,27 @@ class IncrementalTrajectorySet(object):
         self.active_trajs_grid = []
 
 
+class TrajectoryTmp(object):
+    def __init__(self, xys, times, descs=None):
+        self.xys = xys
+        self.times = times
+        self.descs = descs
+
+    def length(self):
+        return len(self.xys)
+
+    def extend(
+        self,
+        time: int,
+        xy: Float[NDArray, "2"],
+        desc: Optional[Float[NDArray, " D"]] = None,
+    ):
+        self.times.append(time)
+        self.xys.append(xy)
+        if desc is not None:
+            self.descs.append(desc)
+
+
 class TrajectorySet:
     """
     A Python implementation of the C++ TrajectorySet.
@@ -420,7 +441,7 @@ class TrajectorySet:
       - as_dict(): returns a dict with keys 'frame_ids', 'locations', 'labels'
     """
 
-    def __init__(self, trajs: dict[int, Trajectory]):
+    def __init__(self, trajs: dict[int, Trajectory | TrajectoryTmp]):
         self.trajs = trajs
 
     def as_dict(self):
