@@ -12,7 +12,7 @@ wandb:
   group: ours_reset_aliked_full_fps
   name: classroom2_talking
   id: null
-  mode: online
+  mode: offline
 
 train: true
 viz: false
