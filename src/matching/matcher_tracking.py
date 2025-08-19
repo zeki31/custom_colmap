@@ -174,9 +174,9 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
     def _create_full_trajs(self, suffix: Literal["aliked", "grid"]) -> TrajectorySet:
         last_traj_id = 0
         dict_trajs = {}
-        for traj_file in self.feature_dir.glob(f"trajs_{suffix}_*.h5"):
+        for traj_file in sorted(self.feature_dir.glob(f"trajs_{suffix}_*.h5")):
             with h5py.File(traj_file, mode="r") as f_trajs:
-                for key in f_trajs.keys():
+                for key in tqdm(f_trajs.keys(), desc=f"Loading {suffix} trajectories"):
                     group = f_trajs[key]
                     if suffix == "aliked":
                         traj = TrajectoryTmp(

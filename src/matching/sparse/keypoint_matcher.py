@@ -197,12 +197,18 @@ class KeypointMatcher:
         self,
         index_pairs: list[tuple[int, int]],
         i_proc: int,
+        viz: bool = False,
     ) -> set[tuple[int, int]]:
         """Match trajectories in the different dynamic cameras."""
         device = torch.device(
             f"cuda:{i_proc % 2}" if torch.cuda.is_available() else "cpu"
         )
         _matcher = KF.LightGlueMatcher("aliked", self.matcher_params).eval().to(device)
+
+        if viz:
+            viz_dir = self.save_dir / "matches_viz"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+            images = [load_image(path) for path in self.paths]
 
         traj_pairs = []
         with h5py.File(
@@ -217,6 +223,8 @@ class KeypointMatcher:
             ):
                 key1 = "-".join(self.paths[idx1].parts[-3:])
                 key2 = "-".join(self.paths[idx2].parts[-3:])
+                kpts1_viz = f_keypoints[key1][...]
+                kpts2_viz = f_keypoints[key2][...]
                 kpts1 = f_keypoints[key1][...]
                 kpts2 = f_keypoints[key2][...]
                 descs1 = f_descriptors[key1][...]
@@ -257,7 +265,24 @@ class KeypointMatcher:
                         axis=1,
                     )
 
-                if len(indices):
+                if viz:
+                    image1 = images[idx1]
+                    image2 = images[idx2]
+                    viz2d.plot_images([image1, image2])
+                    viz2d.plot_matches(
+                        kpts1_viz[indices[:, 0]],
+                        kpts2_viz[indices[:, 1]],
+                        color="lime",
+                        lw=0.2,
+                    )
+                    key1_viz = self.paths[idx1].parts[-3] + "_" + self.paths[idx1].stem
+                    key2_viz = self.paths[idx2].parts[-3] + "_" + self.paths[idx2].stem
+                    viz2d.add_text(0, key1_viz, fs=20)
+                    viz2d.add_text(1, key2_viz, fs=20)
+                    viz2d.save_plot(viz_dir / f"{key1_viz}_{key2_viz}.png")
+                    plt.close()
+
+                if len(indices) >= self.cfg.min_matches:
                     matched_traj_ids = np.stack(
                         [traj_ids1[indices[:, 0]], traj_ids2[indices[:, 1]]], axis=1
                     )

@@ -9,10 +9,10 @@ out_dir: results
 wandb:
   entity: zeki31-global-page
   project: custom_colmap
-  group: ours_reset_aliked_full_fps
+  group: ours_base
   name: classroom2_talking
   id: null
-  mode: offline
+  mode: online
 
 train: true
 viz: false
@@ -22,7 +22,7 @@ retriever:
   ext: jpg
   start: 0
   duration: -1
-  stride: 1
+  stride: 5
 
   comp_ratio: 4
 

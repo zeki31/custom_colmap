@@ -2,7 +2,7 @@ name: tracking
 
 tracker:
   ckpt_path: src/submodules/cotracker/checkpoints/scaled_offline.pth
-  window_len: 6
+  window_len: 5
   grid_size: 60
   sample_ratio_grid: 6
   sample_ratio_aliked: 0
