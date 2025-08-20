@@ -142,6 +142,11 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             only_aliked=False,
             viz=self.cfg.keypoint_detector.viz,
         )
+        del traj_pairs_list
+        del traj_pairs
+        del trajs
+        del trajs_grid
+        del uf
         del trajectories
         gc.collect()
         if self.cfg.tracker.query == "grid":
@@ -163,7 +168,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             _ = self.matcher.multiprocess(
                 self.matcher.traj2match,
                 index_pairs,
-                4,
+                8,
                 (self.feature_dir / "matches_0.h5").exists(),
             )
         gc.collect()
@@ -174,9 +179,9 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
     def _create_full_trajs(self, suffix: Literal["aliked", "grid"]) -> TrajectorySet:
         last_traj_id = 0
         dict_trajs = {}
-        for traj_file in self.feature_dir.glob(f"trajs_{suffix}_*.h5"):
+        for traj_file in sorted(self.feature_dir.glob(f"trajs_{suffix}_*.h5")):
             with h5py.File(traj_file, mode="r") as f_trajs:
-                for key in f_trajs.keys():
+                for key in tqdm(f_trajs.keys(), desc=f"Loading {suffix} trajectories"):
                     group = f_trajs[key]
                     if suffix == "aliked":
                         traj = TrajectoryTmp(

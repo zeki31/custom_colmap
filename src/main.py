@@ -1,5 +1,6 @@
 import argparse
 import gc
+import shutil
 import warnings
 from pathlib import Path
 
@@ -70,18 +71,36 @@ def main():
             matcher.match()
             gc.collect()
 
-            # Import keypoint distances of matches into colmap for RANSAC
-            importer = COLMAPImporter(logger, retriever)
-            importer.import_into_colmap(
-                database_path, feature_dir, image_paths, cfg.matcher.name, cfg.base_dir
+            importer = COLMAPImporter(
+                logger,
+                cfg.base_dir,
+                feature_dir,
+                image_paths,
+                cfg.matcher.tracker.window_len - cfg.matcher.tracker.overlap
+                if cfg.add_non_keyframe
+                else 1,
             )
+            importer.import_keyframes(database_path)
 
-            mapper = Mapper(cfg.mapper, logger)
+            mapper = Mapper(cfg.mapper, logger, save_dir)
             mapper.map(
                 database_path,
                 cfg.base_dir,
                 save_dir,
             )
+            shutil.copytree(
+                save_dir / "sparse", save_dir / "sparse_mini", dirs_exist_ok=True
+            )
+            gc.collect()
+
+            if cfg.add_non_keyframe:
+                out_dir = save_dir / "sparse" / "0"
+
+                importer.import_non_keyframes(database_path)
+                mapper.register_imgs(database_path, out_dir)
+                mapper.bundle_adjustment(out_dir)
+
+                # shutil.rmtree(feature_dir)
 
         if cfg.viz:
             visualizer = get_visualizer(cfg.visualizer, logger, save_dir)

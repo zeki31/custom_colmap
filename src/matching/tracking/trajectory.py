@@ -260,18 +260,14 @@ class IncrementalTrajectorySet(object):
         new_active_trajs_aliked = []
         new_active_trajs_grid = []
         # Handle the trajectories from ALIKED
-        if frame_path is None:
-            for i in range(n_aliked_queries):
-                next_xy, flag, next_desc = next_xys[i], flags[i], next_descs[i]
-                if not flag:
-                    self.full_trajs_aliked.append(self.active_trajs_aliked[i])
-                else:
-                    occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
-                    self.active_trajs_aliked[i].extend(next_time, next_xy, next_desc)
-                    new_active_trajs_aliked.append(self.active_trajs_aliked[i])
-        else:
-            for i in range(n_aliked_queries):
+        for i in range(n_aliked_queries):
+            next_xy, flag, next_desc = next_xys[i], flags[i], next_descs[i]
+            if not flag:
                 self.full_trajs_aliked.append(self.active_trajs_aliked[i])
+            else:
+                occupied_map[int(next_xy[1]), int(next_xy[0])] = 1
+                self.active_trajs_aliked[i].extend(next_time, next_xy, next_desc)
+                new_active_trajs_aliked.append(self.active_trajs_aliked[i])
         # Handle the trajectories from the grid sampling
         for i in range(n_grid_queries):
             next_xy, flag = (
@@ -296,11 +292,23 @@ class IncrementalTrajectorySet(object):
         )  # [H, W, 1]
 
         if self.query == "grid+aliked":
+            active_pts_aliked, active_pts_desc = self.get_cur_pos(return_desc=True)
+            active_pts_grid = self.get_cur_pos()
+            need_pts_num = self.num_features - active_pts_aliked.shape[0]
+            if need_pts_num <= 0:
+                self.sample_candidates = np.concatenate(
+                    [
+                        active_pts_aliked,
+                        active_pts_grid,
+                    ],
+                    axis=0,
+                )
+                return len(active_pts_aliked)
+
             # Generate the next sample candidates using ALIKED
             extracted_pts, extracted_descs = self.generate_aliked_candidates(
                 frame_path
             )  # [N, 2]
-            # active_pts_aliked, active_pts_desc = self.get_cur_pos(return_desc=True)
             # Sample the candidates that are not occupied
             xs = extracted_pts[:, 0].astype(int)
             ys = extracted_pts[:, 1].astype(int)
@@ -311,13 +319,25 @@ class IncrementalTrajectorySet(object):
             non_active_candidates_aliked = extracted_pts[sample_map]
             non_active_candidates_desc = extracted_descs[sample_map]
 
+            if non_active_candidates_aliked.shape[0] > need_pts_num:
+                # Randomly sample the candidates
+                indices = np.random.choice(
+                    non_active_candidates_aliked.shape[0],
+                    size=need_pts_num,
+                    replace=False,
+                )
+                non_active_candidates_aliked = non_active_candidates_aliked[indices]
+                non_active_candidates_desc = non_active_candidates_desc[indices]
+
             times = (np.ones(non_active_candidates_aliked.shape[0]) * next_time).astype(
                 int
             )
             self.new_traj_all(
                 times, non_active_candidates_aliked, non_active_candidates_desc
             )
-            self.candidate_desc = non_active_candidates_desc
+            self.candidate_desc = np.concatenate(
+                [active_pts_desc, non_active_candidates_desc], axis=0
+            )
 
             occupied_map[
                 non_active_candidates_aliked[:, 1].astype(int),
@@ -331,7 +351,6 @@ class IncrementalTrajectorySet(object):
             sample_map = (occupied_map_trans > self.ratio_grid)[
                 :: self.ratio_grid, :: self.ratio_grid, 0
             ]
-            active_pts_grid = self.get_cur_pos()
             non_active_candidates_grid = np.copy(self.grid_all_candidates[sample_map])
 
             self.new_traj_all(
@@ -343,7 +362,7 @@ class IncrementalTrajectorySet(object):
 
             self.sample_candidates = np.concatenate(
                 [
-                    # active_pts_aliked,
+                    active_pts_aliked,
                     non_active_candidates_aliked,
                     active_pts_grid,
                     non_active_candidates_grid,
@@ -351,7 +370,7 @@ class IncrementalTrajectorySet(object):
                 axis=0,
             )
 
-            return len(non_active_candidates_aliked)
+            return len(active_pts_desc) + len(non_active_candidates_aliked)
         elif self.query == "aliked":
             # Generate the next sample candidates using ALIKED
             # active_pts_aliked, active_pts_desc = self.get_cur_pos(return_desc=True)
