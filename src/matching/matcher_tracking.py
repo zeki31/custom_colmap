@@ -142,6 +142,11 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             only_aliked=False,
             viz=self.cfg.keypoint_detector.viz,
         )
+        del traj_pairs_list
+        del traj_pairs
+        del trajs
+        del trajs_grid
+        del uf
         del trajectories
         gc.collect()
         if self.cfg.tracker.query == "grid":
@@ -163,7 +168,7 @@ class MatcherTracking(Matcher[MatcherTrackingCfg]):
             _ = self.matcher.multiprocess(
                 self.matcher.traj2match,
                 index_pairs,
-                4,
+                8,
                 (self.feature_dir / "matches_0.h5").exists(),
             )
         gc.collect()

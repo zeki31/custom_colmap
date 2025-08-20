@@ -31,6 +31,7 @@ class RootCfg:
     prior_dir: Optional[Path]
 
     train: bool
+    add_non_keyframe: bool
     viz: bool
 
     retriever: RetrieverCfg

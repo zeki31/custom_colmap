@@ -19,11 +19,12 @@ class MapperCfg:
 
 
 class Mapper:
-    def __init__(self, cfg: MapperCfg, logger: wandb.sdk.wandb_run.Run):
+    def __init__(self, cfg: MapperCfg, logger: wandb.sdk.wandb_run.Run, save_dir: Path):
         self.cfg = cfg
         self.logger = logger
+        self.save_dir = save_dir
 
-    def map(self, database_path: Path, base_dir: Path, save_dir: Path) -> None:
+    def map(self, database_path: Path, base_dir: Path) -> None:
         # Compute RANSAC (detect match outliers)
         # By doing it exhaustively we guarantee we will find the best possible configuration
         # pycolmap.match_exhaustive(database_path)
@@ -38,12 +39,11 @@ class Mapper:
             check=True,
         )
 
-        save_dir.mkdir(parents=True, exist_ok=True)
         # Incrementally start reconstructing the scene (sparse reconstruction)
         # The process starts from a random pair of images and is incrementally extended by
         # registering new images and triangulating new points.
         start = time.time()
-        output_dir = save_dir / "sparse"
+        output_dir = self.save_dir / "sparse"
         output_dir.mkdir(parents=True, exist_ok=True)
         if self.cfg.name == "colmap":
             # mapper_options = pycolmap.IncrementalPipelineOptions(
@@ -136,7 +136,7 @@ class Mapper:
         print(f"Mapping took {end - start:.2f} seconds")
         print(f"Mapping took {(end - start) / 60:.2f} minutes")
 
-        reconstruction = pycolmap.Reconstruction(save_dir / "sparse" / "0")
+        reconstruction = pycolmap.Reconstruction(self.save_dir / "sparse" / "0")
         print(f"# of registered images: {len(reconstruction.images)}")
         print(f"# of registered points: {len(reconstruction.points3D)}")
         print(
@@ -157,4 +157,93 @@ class Mapper:
             }
         )
 
-        # shutil.rmtree(feature_dir)
+    def register_imgs(self, database_path: Path, input_dir: Path) -> None:
+        subprocess.run(
+            [
+                "colmap",
+                "exhaustive_matcher",
+                "--database_path",
+                str(database_path),
+                "--SiftMatching.gpu_index=0,1",
+            ],
+            check=True,
+        )
+        start = time.time()
+
+        cmd = [
+            "colmap",
+            "image_registrator",
+            "--database_path",
+            str(database_path),
+            "--input_path",
+            str(input_dir),
+            "--output_path",
+            str(input_dir),
+        ]
+        subprocess.run(cmd)
+
+        end = time.time()
+
+        print(f"Registration took {end - start:.2f} seconds")
+        print(f"Registration took {(end - start) / 60:.2f} minutes")
+
+        reconstruction = pycolmap.Reconstruction(input_dir)
+        print(f"# of registered images: {len(reconstruction.images)}")
+        print(f"# of registered points: {len(reconstruction.points3D)}")
+        print(
+            f"Mean Reprojection Error (px): {reconstruction.compute_mean_reprojection_error():.2f}"
+        )
+        print(f"Mean Track Length: {reconstruction.compute_mean_track_length():.2f}")
+        print(
+            f"Mean Observations per Registered Image: {reconstruction.compute_mean_observations_per_reg_image():.2f}"
+        )
+        self.logger.log(
+            {
+                "Registration time (min)": (end - start) // 60,
+                "# of registered images Aft.reg": len(reconstruction.images),
+                "# of registered points Aft.reg": len(reconstruction.points3D),
+                "Mean reprojection error (px) Aft.reg": reconstruction.compute_mean_reprojection_error(),
+                "Mean track length Aft.reg": reconstruction.compute_mean_track_length(),
+                "Mean observations per registered image Aft.reg": reconstruction.compute_mean_observations_per_reg_image(),
+            }
+        )
+
+    def bundle_adjustment(self, input_dir: Path) -> None:
+        start = time.time()
+
+        cmd = [
+            "colmap",
+            "bundle_adjuster",
+            "--input_path",
+            str(input_dir),
+            "--output_path",
+            str(input_dir),
+            "--BundleAdjustment.use_gpu=1",
+        ]
+        subprocess.run(cmd)
+
+        end = time.time()
+
+        print(f"Bundle adjustment took {end - start:.2f} seconds")
+        print(f"Bundle adjustment took {(end - start) / 60:.2f} minutes")
+
+        reconstruction = pycolmap.Reconstruction(input_dir)
+        print(f"# of registered images: {len(reconstruction.images)}")
+        print(f"# of registered points: {len(reconstruction.points3D)}")
+        print(
+            f"Mean Reprojection Error (px): {reconstruction.compute_mean_reprojection_error():.2f}"
+        )
+        print(f"Mean Track Length: {reconstruction.compute_mean_track_length():.2f}")
+        print(
+            f"Mean Observations per Registered Image: {reconstruction.compute_mean_observations_per_reg_image():.2f}"
+        )
+        self.logger.log(
+            {
+                "Bundle adjustment time (min)": (end - start) // 60,
+                "# of registered images Aft.ba": len(reconstruction.images),
+                "# of registered points Aft.ba": len(reconstruction.points3D),
+                "Mean reprojection error (px) Aft.ba": reconstruction.compute_mean_reprojection_error(),
+                "Mean track length Aft.ba": reconstruction.compute_mean_track_length(),
+                "Mean observations per registered image Aft.ba": reconstruction.compute_mean_observations_per_reg_image(),
+            }
+        )
